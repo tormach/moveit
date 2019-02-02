@@ -42,6 +42,10 @@ find_package(PkgConfig)
 pkg_check_modules(YAMLCPP REQUIRED yaml-cpp>=0.5)
 include_directories(SYSTEM ${YAMLCPP_INCLUDE_DIRS})
 
+# OGRE plugin path for rviz
+pkg_check_modules(OGRE_OV REQUIRED OGRE)
+pkg_get_variable(OGRE_PLUGIN_PATH OGRE plugindir)
+
 catkin_package(
   INCLUDE_DIRS
     include
@@ -138,6 +142,7 @@ target_link_libraries(${PROJECT_NAME}_updater
   ${PROJECT_NAME}_tools ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 set_target_properties(${PROJECT_NAME}_updater
                       PROPERTIES OUTPUT_NAME collisions_updater
+                      INSTALL_RPATH "${OGRE_PLUGIN_PATH}"
                       PREFIX "")
 
 install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_updater
