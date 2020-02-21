@@ -134,7 +134,10 @@ std::string move_group::MoveGroupCapability::getActionResultString(const moveit_
     case moveit_msgs::MoveItErrorCodes::PLANNING_FAILED:
     case moveit_msgs::MoveItErrorCodes::INVALID_MOTION_PLAN:
       if (planned_trajectory_empty)
-        return "No motion plan found. No execution attempted.";
+        if (error_code.val == moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
+          return "No motion plan found:  planning failed. No execution attempted.";
+        else
+          return "No motion plan found:  invalid motion plan. No execution attempted.";
       else
         return "Motion plan was found but it seems to be invalid (possibly due to postprocessing). Not executing.";
     case moveit_msgs::MoveItErrorCodes::UNABLE_TO_AQUIRE_SENSOR_DATA:
