@@ -558,8 +558,9 @@ void MotionPlanningFrame::enable()
   }
 
   // activate the frame
-  if (parentWidget())
-    parentWidget()->show();
+  auto parent = parentWidget();
+  if (parent)
+    parent->show();
 }
 
 // (re)initialize after MotionPlanningDisplay::changedMoveGroupNS()
@@ -602,8 +603,9 @@ void MotionPlanningFrame::disable()
 {
   move_group_.reset();
   scene_marker_.reset();
-  if (parentWidget())
-    parentWidget()->hide();
+  auto parent = parentWidget();
+  if (parent)
+    parent->hide();
 }
 
 void MotionPlanningFrame::tabChanged(int index)
