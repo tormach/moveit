@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_srvs
   tf2_eigen
   trajectory_msgs
+  tf_conversions
 )
 moveit_build_options()
 
@@ -38,6 +39,7 @@ catkin_package(
     std_srvs
     tf2_eigen
     trajectory_msgs
+    tf_conversions
   DEPENDS
     EIGEN3
 )
