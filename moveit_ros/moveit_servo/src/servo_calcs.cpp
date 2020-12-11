@@ -652,14 +652,14 @@ void ServoCalcs::calculateJointVelocities(sensor_msgs::JointState& joint_state, 
 void ServoCalcs::composeJointTrajMessage(const sensor_msgs::JointState& joint_state,
                                          trajectory_msgs::JointTrajectory& joint_trajectory) const
 {
-  // When a joint_trajectory_controller receives a new command, a stamp of 0 indicates "begin immediately"
+  // We inject a new waypoint at into the trajectory, so it can be smoothed out
   // See http://wiki.ros.org/joint_trajectory_controller#Trajectory_replacement
-  joint_trajectory.header.stamp = ros::Time(0);
+  joint_trajectory.header.stamp = ros::Time::now() + ros::Duration(parameters_.publish_period);
   joint_trajectory.header.frame_id = parameters_.planning_frame;
   joint_trajectory.joint_names = joint_state.name;
 
   trajectory_msgs::JointTrajectoryPoint point;
-  point.time_from_start = ros::Duration(parameters_.publish_period);
+  point.time_from_start.fromNSec(1);
   if (parameters_.publish_joint_positions)
     point.positions = joint_state.position;
   if (parameters_.publish_joint_velocities)
@@ -782,6 +782,34 @@ void ServoCalcs::enforceVelLimits(Eigen::ArrayXd& delta_theta)
       // Clamp each joint velocity to a joint specific [min_velocity, max_velocity] range.
       const auto bounded_velocity = std::min(std::max(unbounded_velocity, bounds.min_velocity_), bounds.max_velocity_);
       velocity_scaling_factor = std::min(velocity_scaling_factor, bounded_velocity / unbounded_velocity);
+    }
+
+    if (bounds.acceleration_bounded_)
+    {
+      bool clip_acceleration = false;
+      double acceleration_limit = 0;
+      const double current_velocity = prev_joint_velocity_(joint_delta_index); //current_state_->getJointVelocities(joint)[0];
+      const double next_velocity = velocity(joint_delta_index) * velocity_scaling_factor;
+      const double acceleration = (next_velocity - current_velocity) / parameters_.publish_period;
+
+      if (acceleration < bounds.min_acceleration_)
+      {
+        clip_acceleration = true;
+        acceleration_limit = bounds.min_acceleration_;
+      }
+      else if (acceleration > bounds.max_acceleration_)
+      {
+        clip_acceleration = true;
+        acceleration_limit = bounds.max_acceleration_;
+      }
+
+      // Apply acceleration bounds
+      if (clip_acceleration)
+        // Store the scaling factor if it's the smallest yet
+        velocity_scaling_factor = std::min(
+          velocity_scaling_factor,
+          fabs((current_velocity + acceleration_limit * parameters_.publish_period) * parameters_.publish_period) / fabs(delta_theta(joint_delta_index))
+          );
     }
     ++joint_delta_index;
   }
