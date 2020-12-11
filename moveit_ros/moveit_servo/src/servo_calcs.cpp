@@ -835,39 +835,14 @@ bool ServoCalcs::enforcePositionLimits(sensor_msgs::JointState& joint_state)
 }
 
 // Suddenly halt for a joint limit or other critical issue.
-// Is handled differently for position vs. velocity control.
 void ServoCalcs::suddenHalt(trajectory_msgs::JointTrajectory& joint_trajectory)
 {
-  // Prepare the joint trajectory message to stop the robot
+  // An Empty trajectory halts the robots as defined by trajectory controller
+  // See http://wiki.ros.org/joint_trajectory_controller#Preemption_policy
   joint_trajectory.points.clear();
-  joint_trajectory.points.emplace_back();
-  trajectory_msgs::JointTrajectoryPoint& point = joint_trajectory.points.front();
 
-  // When sending out trajectory_msgs/JointTrajectory type messages, the "trajectory" is just a single point.
-  // That point cannot have the same timestamp as the start of trajectory execution since that would mean the
-  // arm has to reach the first trajectory point the moment execution begins. To prevent errors about points
-  // being 0 seconds in the past, the smallest supported timestep is added as time from start to the trajectory point.
-  point.time_from_start.fromNSec(1);
-
-  if (parameters_.publish_joint_positions)
-    point.positions.resize(num_joints_);
-  if (parameters_.publish_joint_velocities)
-    point.velocities.resize(num_joints_);
-
-  // Assert the following loop is safe to execute
-  assert(original_joint_state_.position.size() >= num_joints_);
-
-  // Set the positions and velocities vectors
-  for (std::size_t i = 0; i < num_joints_; ++i)
-  {
-    // For position-controlled robots, can reset the joints to a known, good state
-    if (parameters_.publish_joint_positions)
-      point.positions[i] = original_joint_state_.position[i];
-
-    // For velocity-controlled robots, stop
-    if (parameters_.publish_joint_velocities)
-      point.velocities[i] = 0;
-  }
+  // clear the previous joint velocities
+  prev_joint_velocity_ = Eigen::ArrayXd::Zero(joint_model_group_->getActiveJointModels().size());
 }
 
 // Parse the incoming joint msg for the joints of our MoveGroup
