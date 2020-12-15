@@ -67,12 +67,12 @@ namespace pilz_industrial_motion_planner
 bool computePoseIK(const planning_scene::PlanningSceneConstPtr& scene, const std::string& group_name,
                    const std::string& link_name, const Eigen::Isometry3d& pose, const std::string& frame_id,
                    const std::map<std::string, double>& seed, std::map<std::string, double>& solution,
-                   bool check_self_collision = true, const double timeout = 0.0);
+                   bool check_self_collision = true, const double timeout = 0.5);
 
 bool computePoseIK(const planning_scene::PlanningSceneConstPtr& scene, const std::string& group_name,
                    const std::string& link_name, const geometry_msgs::Pose& pose, const std::string& frame_id,
                    const std::map<std::string, double>& seed, std::map<std::string, double>& solution,
-                   bool check_self_collision = true, const double timeout = 0.0);
+                   bool check_self_collision = true, const double timeout = 0.5);
 
 /**
  * @brief compute the pose of a link at give robot state
