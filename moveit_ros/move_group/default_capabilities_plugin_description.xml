@@ -72,4 +72,10 @@
     </description>
   </class>
 
+  <class name="move_group/MoveGroupRetimeTrajectoryService" type="move_group::MoveGroupRetimeTrajectoryService" base_class_type="move_group::MoveGroupCapability">
+    <description>
+      Retime trajectories via a ROS service
+    </description>
+  </class>
+
 </library>
