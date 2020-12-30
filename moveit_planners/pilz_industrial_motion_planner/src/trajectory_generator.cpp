@@ -346,7 +346,7 @@ bool TrajectoryGenerator::generate(const planning_scene::PlanningSceneConstPtr& 
   }
   catch (const MoveItErrorCodeException& ex)
   {
-    ROS_ERROR_STREAM(ex.what());
+    ROS_WARN_STREAM(ex.what());
     res.error_code_.val = ex.getErrorCode();
     setFailureResponse(planning_begin, res);
     return false;
