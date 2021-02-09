@@ -165,7 +165,7 @@ class TimeOptimalTrajectoryGeneration : public TimeParameterization
 {
 public:
   TimeOptimalTrajectoryGeneration(const double path_tolerance = 0.1, const double resample_dt = 0.1,
-                                  const double min_angle_change = 0.001);
+                                  const double min_angle_change = 0.00001);
 
   bool computeTimeStamps(robot_trajectory::RobotTrajectory& trajectory, const double max_velocity_scaling_factor = 1.0,
                          const double max_acceleration_scaling_factor = 1.0) const override;
@@ -174,5 +174,6 @@ private:
   const double path_tolerance_;
   const double resample_dt_;
   const double min_angle_change_;
+  const double time_step_default_;
 };
 }  // namespace trajectory_processing

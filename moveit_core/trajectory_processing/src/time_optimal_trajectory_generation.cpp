@@ -855,9 +855,10 @@ Eigen::VectorXd Trajectory::getAcceleration(double time) const
   return path_acc;
 }
 
-TimeOptimalTrajectoryGeneration::TimeOptimalTrajectoryGeneration(const double path_tolerance, const double resample_dt,
+TimeOptimalTrajectoryGeneration::TimeOptimalTrajectoryGeneration(const double path_tolerance,
+                                                                 const double resample_dt,
                                                                  const double min_angle_change)
-  : path_tolerance_(path_tolerance), resample_dt_(resample_dt), min_angle_change_(min_angle_change)
+  : path_tolerance_(path_tolerance), resample_dt_(resample_dt), min_angle_change_(0.000001), time_step_default_(0.001)
 {
 }
 
@@ -991,7 +992,7 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
   }
 
   // Now actually call the algorithm
-  Trajectory parameterized(Path(points, path_tolerance_), max_velocity, max_acceleration, 0.001);
+  Trajectory parameterized(Path(points, path_tolerance_), max_velocity, max_acceleration, time_step_default_);
   if (!parameterized.isValid())
   {
     ROS_ERROR_NAMED(LOGNAME, "Unable to parameterize trajectory.");
