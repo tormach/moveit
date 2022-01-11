@@ -51,6 +51,9 @@
 namespace pilz_industrial_motion_planner
 {
 static const std::string PARAM_NAMESPACE_LIMTS = "robot_description_planning";
+static const std::string SERVICE_NAMESPACE_ERROR_DETAILS = "~/pilz_industrial_motion_planner";
+static const std::string ERROR_DETAILS_SERVICE_NAME = "get_planning_error_details";
+static const std::string PARAM_PLANNING_PARAMETERS = "~/pilz_industrial_motion_planner";
 
 bool CommandPlanner::initialize(const moveit::core::RobotModelConstPtr& model, const std::string& ns)
 {
@@ -68,6 +71,12 @@ bool CommandPlanner::initialize(const moveit::core::RobotModelConstPtr& model, c
   // Obtain cartesian limits
   cartesian_limit_ = pilz_industrial_motion_planner::CartesianLimitsAggregator::getAggregatedLimits(
       ros::NodeHandle(PARAM_NAMESPACE_LIMTS));
+
+  planning_parameters_ = std::make_shared<pilz_industrial_motion_planner::PlanningParameters>(
+      ros::NodeHandle(PARAM_PLANNING_PARAMETERS));
+
+  // Preserve error details
+  error_details_ = std::make_shared<pilz_industrial_motion_planner::ErrorDetailsContainer>();
 
   // Load the planning context loader
   planner_context_loader = std::make_unique<pluginlib::ClassLoader<PlanningContextLoader>>(
@@ -95,10 +104,24 @@ bool CommandPlanner::initialize(const moveit::core::RobotModelConstPtr& model, c
 
     loader_pointer->setLimits(limits);
     loader_pointer->setModel(model_);
+    loader_pointer->setErrorDetails(error_details_);
+    loader_pointer->setPlanningParameters(planning_parameters_);
 
     registerContextLoader(loader_pointer);
   }
 
+  planning_error_service_ = ros::NodeHandle(SERVICE_NAMESPACE_ERROR_DETAILS).advertiseService(
+      ERROR_DETAILS_SERVICE_NAME, &CommandPlanner::getPlanningErrorDetails, this);
+  ROS_INFO_STREAM("Advertised get_planning_error_details service.");
+
+  return true;
+}
+
+bool CommandPlanner::getPlanningErrorDetails(moveit_msgs::GetPlanningErrorDetails::Request& req,
+                                                moveit_msgs::GetPlanningErrorDetails::Response& res)
+{
+  res.error_code.val = error_details_->getErrorCode();
+  res.message = error_details_->getErrorMessage();
   return true;
 }
 

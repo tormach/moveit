@@ -105,7 +105,8 @@ bool computeLinkFK(const robot_model::RobotModelConstPtr& robot_model, const std
 bool verifySampleJointLimits(const std::map<std::string, double>& position_last,
                              const std::map<std::string, double>& velocity_last,
                              const std::map<std::string, double>& position_current, double duration_last,
-                             double duration_current, const JointLimitsContainer& joint_limits);
+                             double duration_current, const JointLimitsContainer& joint_limits,
+                             std::pair<double, double>& max_scaling_factors);
 
 /**
  * @brief Generate joint trajectory from a KDL Cartesian trajectory
@@ -130,7 +131,9 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              const std::string& group_name, const std::string& link_name,
                              const std::map<std::string, double>& initial_joint_position, const double& sampling_time,
                              trajectory_msgs::JointTrajectory& joint_trajectory,
-                             moveit_msgs::MoveItErrorCodes& error_code, bool check_self_collision = false);
+                             moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
+                             bool check_self_collision = false, bool output_tcp_joints = false, bool strict_limits = true,
+                             double min_scaling_correction_factor = 0.01);
 
 /**
  * @brief Generate joint trajectory from a MultiDOFJointTrajectory
@@ -149,10 +152,11 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              const std::map<std::string, double>& initial_joint_position,
                              const std::map<std::string, double>& initial_joint_velocity,
                              trajectory_msgs::JointTrajectory& joint_trajectory,
-                             moveit_msgs::MoveItErrorCodes& error_code, bool check_self_collision = false);
+                             moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
+                             bool check_self_collision = false);
 
 /**
- * @brief Determines the sampling time and checks that both trajectroies use the
+ * @brief Determines the sampling time and checks that both trajectories use the
  * same sampling time.
  * @return TRUE if the sampling time is equal between all given points (except
  * the last two points

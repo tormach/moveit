@@ -40,6 +40,7 @@
 
 #include <kdl/rotational_interpolation_sa.hpp>
 #include <kdl/trajectory_segment.hpp>
+#include <utility>
 #include <kdl/utilities/error.h>
 #include <kdl/utilities/utility.h>
 #include <moveit/robot_state/conversions.h>
@@ -52,8 +53,10 @@ namespace pilz_industrial_motion_planner
 {
 TrajectoryGeneratorCIRC::TrajectoryGeneratorCIRC(const moveit::core::RobotModelConstPtr& robot_model,
                                                  const LimitsContainer& planner_limits,
-                                                 const std::string& /*group_name*/)
-  : TrajectoryGenerator::TrajectoryGenerator(robot_model, planner_limits)
+                                                 const std::string& /*group_name*/,
+                                                 std::shared_ptr<ErrorDetailsContainer> error_details,
+                                                 std::shared_ptr<PlanningParameters> planning_parameters)
+  : TrajectoryGenerator::TrajectoryGenerator(robot_model, planner_limits, std::move(error_details), std::move(planning_parameters))
 {
   if (!planner_limits_.hasFullCartesianLimits())
   {
@@ -195,27 +198,66 @@ void TrajectoryGeneratorCIRC::extractMotionPlanInfo(const planning_scene::Planni
 
 void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& scene,
                                    const planning_interface::MotionPlanRequest& req, const MotionPlanInfo& plan_info,
-                                   const double& sampling_time, trajectory_msgs::JointTrajectory& joint_trajectory)
+                                   const double& /*sampling_time*/, trajectory_msgs::JointTrajectory& joint_trajectory)
 {
   std::unique_ptr<KDL::Path> cart_path(setPathCIRC(plan_info));
-  std::unique_ptr<KDL::VelocityProfile> vel_profile(
-      cartesianTrapVelocityProfile(req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor, cart_path));
-
-  // combine path and velocity profile into Cartesian trajectory
-  // with the third parameter set to false, KDL::Trajectory_Segment does not
-  // take
-  // the ownship of Path and Velocity Profile
-  KDL::Trajectory_Segment cart_trajectory(cart_path.get(), vel_profile.get(), false);
-
+  planning_interface::MotionPlanRequest new_req = req;
   moveit_msgs::MoveItErrorCodes error_code;
-  // sample the Cartesian trajectory and compute joint trajectory using inverse
-  // kinematics
-  if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
-                               plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
-                               error_code))
+  std::pair<double, double> max_scaling_factors;
+  bool scaling_factor_corrected = false;
+  bool succeeded = false;
+
+  const double sampling_time = planning_parameters_->getSamplingTime();
+
+  while (!succeeded)
   {
+    // create velocity profile
+    std::unique_ptr<KDL::VelocityProfile> vel_profile(
+        cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, cart_path));
+
+    // combine path and velocity profile into Cartesian trajectory
+    // with the third parameter set to false, KDL::Trajectory_Segment does not
+    // take
+    // the ownership of Path and Velocity Profile
+    KDL::Trajectory_Segment cart_trajectory(cart_path.get(), vel_profile.get(), false);
+
+    // sample the Cartesian trajectory and compute joint trajectory using inverse
+    // kinematics
+    if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
+                                 plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
+                                 error_code, max_scaling_factors))
+    {
+      if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
+      {
+        break;
+      }
+
+      // planning failed due to joint velocity/acceleration violation
+      new_req.max_velocity_scaling_factor = max_scaling_factors.first * req.max_velocity_scaling_factor;
+      new_req.max_acceleration_scaling_factor = max_scaling_factors.second * req.max_acceleration_scaling_factor;
+      if (new_req.max_velocity_scaling_factor < MIN_SCALING_CORRECTION_FACTOR ||
+      new_req.max_acceleration_scaling_factor < MIN_SCALING_CORRECTION_FACTOR)
+      {
+        break;
+      }
+
+      ROS_DEBUG_STREAM("updating scaling factors " <<
+                       new_req.max_velocity_scaling_factor << " " << new_req.max_acceleration_scaling_factor);
+      scaling_factor_corrected = true;
+      continue;
+    }
+
+    succeeded = true;
+  }
+
+  if (!succeeded){
     throw CircTrajectoryConversionFailure("Failed to generate valid joint trajectory from the Cartesian path",
                                           error_code.val);
+  }
+
+  if (scaling_factor_corrected) {
+    ROS_INFO_STREAM("Joint velocity or acceleration limit violated.\nScaling factors have been corrected to vel: " <<
+    new_req.max_velocity_scaling_factor << " accel: " << new_req.max_acceleration_scaling_factor);
   }
 }
 

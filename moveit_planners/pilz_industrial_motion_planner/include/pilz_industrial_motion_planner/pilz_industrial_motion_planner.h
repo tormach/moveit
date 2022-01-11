@@ -38,11 +38,15 @@
 
 #include "pilz_industrial_motion_planner/joint_limits_extension.h"
 #include "pilz_industrial_motion_planner/planning_context_loader.h"
+#include "pilz_industrial_motion_planner/error_details_container.h"
+#include "pilz_industrial_motion_planner/planning_parameters.h"
 
 #include <moveit/macros/class_forward.h>
 #include <moveit/planning_interface/planning_interface.h>
 
 #include <pluginlib/class_loader.hpp>
+
+#include <moveit_msgs/GetPlanningErrorDetails.h>
 
 // Boost includes
 #include <boost/scoped_ptr.hpp>
@@ -55,7 +59,7 @@ namespace pilz_industrial_motion_planner
  * corresponds to the requested motion command
  * set as planner_id in the MotionPlanRequest).
  * It can be easily extended with additional commands by creating a class
- * inherting from PlanningContextLoader.
+ * inheriting from PlanningContextLoader.
  */
 class CommandPlanner : public planning_interface::PlannerManager
 {
@@ -73,6 +77,8 @@ public:
    * @return true on success, false otherwise
    */
   bool initialize(const robot_model::RobotModelConstPtr& model, const std::string& ns) override;
+
+  bool getPlanningErrorDetails(moveit_msgs::GetPlanningErrorDetails::Request& req, moveit_msgs::GetPlanningErrorDetails::Response& res);
 
   /// Description of the planner
   std::string getDescription() const override;
@@ -132,6 +138,15 @@ private:
 
   /// cartesian limit
   pilz_industrial_motion_planner::CartesianLimit cartesian_limit_;
+
+  /// planning parameters read at runtime
+  std::shared_ptr<pilz_industrial_motion_planner::PlanningParameters> planning_parameters_;
+
+  /// get_planning_error_details service
+  ros::ServiceServer planning_error_service_;
+
+  /// error details for later inspection
+  std::shared_ptr<pilz_industrial_motion_planner::ErrorDetailsContainer> error_details_;
 };
 
 MOVEIT_CLASS_FORWARD(CommandPlanner);

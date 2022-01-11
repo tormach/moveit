@@ -39,6 +39,8 @@
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_kdl/tf2_kdl.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <kdl/rotational_interpolation.hpp>
+#include <kdl/rotational_interpolation_sa.hpp>
 
 bool pilz_industrial_motion_planner::computePoseIK(const planning_scene::PlanningSceneConstPtr& scene,
                                                    const std::string& group_name, const std::string& link_name,
@@ -93,7 +95,7 @@ bool pilz_industrial_motion_planner::computePoseIK(const planning_scene::Plannin
   }
   else
   {
-    ROS_WARN_STREAM("Inverse kinematics for pose \n" << pose.translation() << " has no solution.");
+    ROS_INFO_STREAM("Inverse kinematics for pose \n" << pose.translation() << " " << pose.rotation() << "\n has no solution.");
     return false;
   }
 }
@@ -139,16 +141,22 @@ bool pilz_industrial_motion_planner::computeLinkFK(const moveit::core::RobotMode
 bool pilz_industrial_motion_planner::verifySampleJointLimits(
     const std::map<std::string, double>& position_last, const std::map<std::string, double>& velocity_last,
     const std::map<std::string, double>& position_current, double duration_last, double duration_current,
-    const pilz_industrial_motion_planner::JointLimitsContainer& joint_limits)
+    const pilz_industrial_motion_planner::JointLimitsContainer& joint_limits,
+    std::pair<double, double>& max_scaling_factors)
 {
   const double epsilon = 10e-6;
   if (duration_current <= epsilon)
   {
     ROS_ERROR("Sample duration too small, cannot compute the velocity");
+    max_scaling_factors.first = 0.0;
+    max_scaling_factors.second = 0.0;
     return false;
   }
 
   double velocity_current, acceleration_current;
+  double velocity_scale = 1.0;
+  double acceleration_scale = 1.0;
+  bool succeeded = true;
 
   for (const auto& pos : position_current)
   {
@@ -156,25 +164,27 @@ bool pilz_industrial_motion_planner::verifySampleJointLimits(
 
     if (!joint_limits.verifyVelocityLimit(pos.first, velocity_current))
     {
-      ROS_WARN_STREAM("Joint velocity limit of " << pos.first << " violated. Set the velocity scaling factor lower!"
+      velocity_scale = std::min(fabs(joint_limits.getLimit(pos.first).max_velocity) / fabs(velocity_current), velocity_scale);
+      ROS_DEBUG_STREAM("Joint velocity limit of " << pos.first << " violated. Set the velocity scaling factor lower!"
                                                   << " Actual joint velocity is " << velocity_current
                                                   << ", while the limit is "
                                                   << joint_limits.getLimit(pos.first).max_velocity << ". ");
-      return false;
+      succeeded = false;
     }
 
-    acceleration_current = (velocity_current - velocity_last.at(pos.first)) / (duration_last + duration_current) * 2;
+    acceleration_current = (velocity_current - velocity_last.at(pos.first)) / (duration_last + duration_current) * 2.0;
     // acceleration case
     if (fabs(velocity_last.at(pos.first)) <= fabs(velocity_current))
     {
       if (joint_limits.getLimit(pos.first).has_acceleration_limits &&
           fabs(acceleration_current) > fabs(joint_limits.getLimit(pos.first).max_acceleration))
       {
-        ROS_WARN_STREAM("Joint acceleration limit of "
+        acceleration_scale = std::min(fabs(joint_limits.getLimit(pos.first).max_acceleration)/ fabs(acceleration_current), acceleration_scale);
+        ROS_DEBUG_STREAM("Joint acceleration limit of "
                          << pos.first << " violated. Set the acceleration scaling factor lower!"
                          << " Actual joint acceleration is " << acceleration_current << ", while the limit is "
                          << joint_limits.getLimit(pos.first).max_acceleration << ". ");
-        return false;
+        succeeded = false;
       }
     }
     // deceleration case
@@ -183,16 +193,19 @@ bool pilz_industrial_motion_planner::verifySampleJointLimits(
       if (joint_limits.getLimit(pos.first).has_deceleration_limits &&
           fabs(acceleration_current) > fabs(joint_limits.getLimit(pos.first).max_deceleration))
       {
-        ROS_WARN_STREAM("Joint deceleration limit of "
+        acceleration_scale = std::min(fabs(joint_limits.getLimit(pos.first).max_deceleration)/ fabs(acceleration_current), acceleration_scale);
+        ROS_DEBUG_STREAM("Joint deceleration limit of "
                          << pos.first << " violated. Set the acceleration scaling factor lower!"
                          << " Actual joint deceleration is " << acceleration_current << ", while the limit is "
                          << joint_limits.getLimit(pos.first).max_deceleration << ". ");
-        return false;
+        succeeded = false;
       }
     }
   }
 
-  return true;
+  max_scaling_factors.first = velocity_scale;
+  max_scaling_factors.second = acceleration_scale;
+  return succeeded;
 }
 
 bool pilz_industrial_motion_planner::generateJointTrajectory(
@@ -201,9 +214,11 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const std::string& group_name, const std::string& link_name,
     const std::map<std::string, double>& initial_joint_position, const double& sampling_time,
     trajectory_msgs::JointTrajectory& joint_trajectory, moveit_msgs::MoveItErrorCodes& error_code,
-    bool check_self_collision)
+    std::pair<double, double>& max_scaling_factors, bool check_self_collision, bool output_tcp_joints,
+    bool strict_limits, double min_scaling_correction_factor)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
+  const auto old_max_scaling_factors = max_scaling_factors;
 
   const moveit::core::RobotModelConstPtr& robot_model = scene->getRobotModel();
   ros::Time generation_begin = ros::Time::now();
@@ -225,19 +240,38 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   {
     joint_velocity_last[item.first] = 0.0;
   }
+  // set joint names
+  joint_trajectory.joint_names.clear();
+  for (const auto& start_joint : initial_joint_position)
+  {
+    joint_trajectory.joint_names.push_back(start_joint.first);
+  }
+  const std::vector<std::string> joint_names = joint_trajectory.joint_names;
+  if (output_tcp_joints)
+  {
+    joint_trajectory.joint_names.push_back("tcp_lin");
+    joint_trajectory.joint_names.push_back("tcp_rot");
+  }
 
+  bool success = true;
+  max_scaling_factors.first = 1.0; // velocity
+  max_scaling_factors.second = 1.0; // acceleration
+  KDL::Frame frame_sample_last;
+  KDL::RotationalInterpolation_SingleAxis rot_interpolation;
+  double tcp_pos = 0.0;
+  double tcp_rot = 0.0;
   for (std::vector<double>::const_iterator time_iter = time_samples.begin(); time_iter != time_samples.end();
        ++time_iter)
   {
-    tf2::fromMsg(tf2::toMsg(trajectory.Pos(*time_iter)), pose_sample);
+    const auto frame_sample = trajectory.Pos(*time_iter);
+    tf2::fromMsg(tf2::toMsg(frame_sample), pose_sample);
 
     if (!computePoseIK(scene, group_name, link_name, pose_sample, robot_model->getModelFrame(), ik_solution_last,
                        ik_solution, check_self_collision))
     {
-      ROS_ERROR("Failed to compute inverse kinematics solution for sampled "
-                "Cartesian pose.");
+      ROS_INFO("Failed to compute inverse kinematics solution for sampled "
+               "Cartesian pose.");
       error_code.val = moveit_msgs::MoveItErrorCodes::NO_IK_SOLUTION;
-      joint_trajectory.points.clear();
       return false;
     }
 
@@ -254,29 +288,30 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     }
 
     // skip the first sample with zero time from start for limits checking
+    std::pair<double, double> tmp_max_scaling_factors;
     if (time_iter != time_samples.begin() &&
         !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, sampling_time,
-                                 duration_current_sample, joint_limits))
+                                 duration_current_sample, joint_limits, tmp_max_scaling_factors))
     {
-      ROS_WARN_STREAM("Inverse kinematics solution at "
+      ROS_DEBUG_STREAM("Inverse kinematics solution at "
                        << *time_iter << "s violates the joint velocity/acceleration/deceleration limits.");
+      max_scaling_factors.first = std::min(max_scaling_factors.first, tmp_max_scaling_factors.first);
+      max_scaling_factors.second = std::min(max_scaling_factors.second, tmp_max_scaling_factors.second);
+      success = false;
       error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
-      joint_trajectory.points.clear();
-      return false;
+      if ((old_max_scaling_factors.first * tmp_max_scaling_factors.first < min_scaling_correction_factor) ||
+          (old_max_scaling_factors.second * tmp_max_scaling_factors.second < min_scaling_correction_factor) ||
+          strict_limits)
+      {
+        return false;
+      }
     }
 
     // fill the point with joint values
     trajectory_msgs::JointTrajectoryPoint point;
 
-    // set joint names
-    joint_trajectory.joint_names.clear();
-    for (const auto& start_joint : initial_joint_position)
-    {
-      joint_trajectory.joint_names.push_back(start_joint.first);
-    }
-
     point.time_from_start = ros::Duration(*time_iter);
-    for (const auto& joint_name : joint_trajectory.joint_names)
+    for (const auto& joint_name : joint_names)
     {
       point.positions.push_back(ik_solution.at(joint_name));
 
@@ -284,17 +319,37 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       {
         double joint_velocity =
             (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current_sample;
-        point.velocities.push_back(joint_velocity);
-        point.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
-                                      (duration_current_sample + sampling_time) * 2);
+        if (!output_tcp_joints)
+        {
+          point.velocities.push_back(joint_velocity);
+          point.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
+                                        (duration_current_sample + sampling_time) * 2.0);
+        }
         joint_velocity_last[joint_name] = joint_velocity;
       }
       else
       {
-        point.velocities.push_back(0.);
-        point.accelerations.push_back(0.);
+        if (!output_tcp_joints)
+        {
+          point.velocities.push_back(0.);
+          point.accelerations.push_back(0.);
+        }
         joint_velocity_last[joint_name] = 0.;
       }
+    }
+
+    if (output_tcp_joints)
+    {
+      if (time_iter != time_samples.begin())
+      {
+        KDL::Frame diff = frame_sample * frame_sample_last.Inverse();
+        tcp_pos += diff.p.Norm();
+        rot_interpolation.SetStartEnd(frame_sample_last.M, frame_sample.M);
+        tcp_rot += rot_interpolation.Angle();
+      }
+      point.positions.push_back(tcp_pos);  // tcp_lin
+      point.positions.push_back(tcp_rot);  // tcp_rot
+      frame_sample_last = frame_sample;
     }
 
     // update joint trajectory
@@ -302,13 +357,15 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     ik_solution_last = ik_solution;
   }
 
-  error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
-  double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
-  ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
-                                                     << " ms | " << duration_ms / joint_trajectory.points.size()
-                                                     << " ms per Point");
-
-  return true;
+  if (success)
+  {
+    error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
+    double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
+    ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
+                                                       << " ms | " << duration_ms / joint_trajectory.points.size()
+                                                       << " ms per Point");
+  }
+  return success;
 }
 
 bool pilz_industrial_motion_planner::generateJointTrajectory(
@@ -317,7 +374,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const pilz_industrial_motion_planner::CartesianTrajectory& trajectory, const std::string& group_name,
     const std::string& link_name, const std::map<std::string, double>& initial_joint_position,
     const std::map<std::string, double>& initial_joint_velocity, trajectory_msgs::JointTrajectory& joint_trajectory,
-    moveit_msgs::MoveItErrorCodes& error_code, bool check_self_collision)
+    moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors, bool check_self_collision)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
 
@@ -334,6 +391,9 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     joint_trajectory.joint_names.push_back(joint_position.first);
   }
   std::map<std::string, double> ik_solution;
+  bool success = true;
+  max_scaling_factors.first = 1.0;
+  max_scaling_factors.second = 1.0;
   for (size_t i = 0; i < trajectory.points.size(); ++i)
   {
     // compute inverse kinematics
@@ -359,19 +419,20 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
           trajectory.points.at(i).time_from_start.toSec() - trajectory.points.at(i - 1).time_from_start.toSec();
     }
 
+    std::pair<double, double> tmp_max_scaling_factors;
     if (!verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, duration_last, duration_current,
-                                 joint_limits))
+                                 joint_limits, tmp_max_scaling_factors))
     {
       // LCOV_EXCL_START since the same code was captured in a test in the other
       // overload generateJointTrajectory(...,
       // KDL::Trajectory, ...)
       // TODO: refactor to avoid code duplication.
-      ROS_WARN_STREAM("Inverse kinematics solution of the " << i
+      max_scaling_factors.first = std::min(max_scaling_factors.first, tmp_max_scaling_factors.first);
+      max_scaling_factors.second = std::min(max_scaling_factors.second, tmp_max_scaling_factors.second);
+      ROS_DEBUG_STREAM("Inverse kinematics solution of the " << i
                                                              << "th sample violates the joint "
                                                                 "velocity/acceleration/deceleration limits.");
-      error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
-      joint_trajectory.points.clear();
-      return false;
+      success = false;
       // LCOV_EXCL_STOP
     }
 
@@ -384,7 +445,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       double joint_velocity = (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current;
       waypoint_joint.velocities.push_back(joint_velocity);
       waypoint_joint.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
-                                             (duration_current + duration_last) * 2);
+                                             (duration_current + duration_last) * 2.0);
       // update the joint velocity
       joint_velocity_last[joint_name] = joint_velocity;
     }
@@ -395,8 +456,13 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     duration_last = duration_current;
   }
 
-  error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
+  if (!success) {
+    error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
+    joint_trajectory.points.clear();
+    return false;
+  }
 
+  error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
   double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
   ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
                                                      << " ms | " << duration_ms / joint_trajectory.points.size()

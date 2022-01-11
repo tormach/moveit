@@ -35,7 +35,13 @@
 #include "pilz_industrial_motion_planner/planning_context_loader.h"
 #include <ros/ros.h>
 
-pilz_industrial_motion_planner::PlanningContextLoader::PlanningContextLoader() : limits_set_(false), model_set_(false)
+#include <utility>
+
+pilz_industrial_motion_planner::PlanningContextLoader::PlanningContextLoader() :
+  limits_set_(false),
+  model_set_(false),
+  error_details_set_(false),
+  planning_parameters_set_(false)
 {
 }
 
@@ -55,6 +61,22 @@ bool pilz_industrial_motion_planner::PlanningContextLoader::setLimits(
 {
   limits_ = limits;
   limits_set_ = true;
+  return true;
+}
+
+bool pilz_industrial_motion_planner::PlanningContextLoader::setErrorDetails(
+    std::shared_ptr<pilz_industrial_motion_planner::ErrorDetailsContainer> error_details)
+{
+  error_details_ = std::move(error_details);
+  error_details_set_ = true;
+  return true;
+}
+
+bool pilz_industrial_motion_planner::PlanningContextLoader::setPlanningParameters(
+    std::shared_ptr<PlanningParameters> planning_parameters)
+{
+  planning_parameters_ = std::move(planning_parameters);
+  planning_parameters_set_ = true;
   return true;
 }
 

@@ -43,6 +43,7 @@
 
 #include <kdl/path_line.hpp>
 #include <kdl/trajectory_segment.hpp>
+#include <utility>
 #include <kdl/utilities/error.h>
 
 #include <tf2_kdl/tf2_kdl.h>
@@ -52,8 +53,10 @@
 namespace pilz_industrial_motion_planner
 {
 TrajectoryGeneratorLIN::TrajectoryGeneratorLIN(const moveit::core::RobotModelConstPtr& robot_model,
-                                               const LimitsContainer& planner_limits, const std::string& /*group_name*/)
-  : TrajectoryGenerator::TrajectoryGenerator(robot_model, planner_limits)
+                                               const LimitsContainer& planner_limits, const std::string& /*group_name*/,
+                                               std::shared_ptr<ErrorDetailsContainer> error_details,
+                                               std::shared_ptr<PlanningParameters> planning_parameters)
+  : TrajectoryGenerator::TrajectoryGenerator(robot_model, planner_limits, std::move(error_details), std::move(planning_parameters))
 {
   if (!planner_limits_.hasFullCartesianLimits())
   {
@@ -138,44 +141,102 @@ void TrajectoryGeneratorLIN::extractMotionPlanInfo(const planning_scene::Plannin
   // return 'true'.
   computeLinkFK(robot_model_, info.link_name, info.start_joint_position, info.start_pose);
 
-  // check goal pose ik before Cartesian motion plan starts
-  std::map<std::string, double> ik_solution;
-  if (!computePoseIK(scene, info.group_name, info.link_name, info.goal_pose, frame_id, info.start_joint_position,
-                     ik_solution))
+  if (!planning_parameters_->getTrimOnFailure())
   {
-    std::ostringstream os;
-    os << "Failed to compute inverse kinematics for link: " << info.link_name << " of goal pose";
-    throw LinInverseForGoalIncalculable(os.str());
+    // check goal pose ik before Cartesian motion plan starts
+    std::map<std::string, double> ik_solution;
+    if (!computePoseIK(scene, info.group_name, info.link_name, info.goal_pose, frame_id, info.start_joint_position,
+                       ik_solution))
+    {
+      std::ostringstream os;
+      os << "Failed to compute inverse kinematics for link: " << info.link_name << " of goal pose";
+      throw LinInverseForGoalIncalculable(os.str());
+    }
   }
 }
 
 void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& scene,
                                   const planning_interface::MotionPlanRequest& req, const MotionPlanInfo& plan_info,
-                                  const double& sampling_time, trajectory_msgs::JointTrajectory& joint_trajectory)
+                                  const double & /*sampling_time*/, trajectory_msgs::JointTrajectory& joint_trajectory)
 {
   // create Cartesian path for lin
   std::unique_ptr<KDL::Path> path(setPathLIN(plan_info.start_pose, plan_info.goal_pose));
-
-  // create velocity profile
-  std::unique_ptr<KDL::VelocityProfile> vp(
-      cartesianTrapVelocityProfile(req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor, path));
-
-  // combine path and velocity profile into Cartesian trajectory
-  // with the third parameter set to false, KDL::Trajectory_Segment does not
-  // take
-  // the ownship of Path and Velocity Profile
-  KDL::Trajectory_Segment cart_trajectory(path.get(), vp.get(), false);
-
+  planning_interface::MotionPlanRequest new_req = req;
   moveit_msgs::MoveItErrorCodes error_code;
-  // sample the Cartesian trajectory and compute joint trajectory using inverse
-  // kinematics
-  if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
-                               plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
-                               error_code))
+  std::pair<double, double> max_scaling_factors {req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor};
+  bool scaling_factor_corrected = false;
+  bool succeeded = false;
+
+  const double sampling_time = planning_parameters_->getSamplingTime();
+  const double min_scaling_correction_factor = planning_parameters_->getMinScalingCorrectionFactor();
+  const bool strict_limits = planning_parameters_->getStrictLimits();
+  const bool trim_on_failure = planning_parameters_->getTrimOnFailure();
+  const bool output_tcp_joints = planning_parameters_->getOutputTcpJoints();
+
+  if (trim_on_failure && !output_tcp_joints) {
+    ROS_WARN("trim_on_failure only supported when output_tcp_joints is active");
+  }
+
+  while (!succeeded)
   {
-    std::ostringstream os;
-    os << "Failed to generate valid joint trajectory from the Cartesian path";
-    throw LinTrajectoryConversionFailure(os.str(), error_code.val);
+    // create velocity profile
+    std::unique_ptr<KDL::VelocityProfile> vp(
+        cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, path));
+
+    // combine path and velocity profile into Cartesian trajectory
+    // with the third parameter set to false, KDL::Trajectory_Segment does not
+    // take
+    // the ownership of Path and Velocity Profile
+    KDL::Trajectory_Segment cart_trajectory(path.get(), vp.get(), false);
+
+    //  sample the Cartesian trajectory and compute joint trajectory using inverse
+    //  kinematics
+    if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
+                                 plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
+                                 error_code,max_scaling_factors, false, output_tcp_joints, strict_limits, min_scaling_correction_factor))
+    {
+      if (trim_on_failure && !joint_trajectory.points.empty())
+      {
+        succeeded = true;
+        break; // trimming active and at least one trajectory point
+      }
+      else if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
+      {
+        break; // error not related to limit violation
+      }
+      else if (strict_limits) {
+        break; // planning failed due to joint velocity/acceleration violation
+      }
+      else if (output_tcp_joints) {
+        succeeded = true;
+        break; // velocity/acceleration violation, but outputting tcp joints, no need to scale
+      }
+      new_req.max_velocity_scaling_factor = max_scaling_factors.first * new_req.max_velocity_scaling_factor;
+      new_req.max_acceleration_scaling_factor = max_scaling_factors.second * new_req.max_acceleration_scaling_factor;
+      if (new_req.max_velocity_scaling_factor < min_scaling_correction_factor ||
+          new_req.max_acceleration_scaling_factor < min_scaling_correction_factor)
+      {
+        break; // would require scaling factor below threshold
+      }
+
+      ROS_DEBUG_STREAM("updating scaling factors " <<
+                       new_req.max_velocity_scaling_factor << " " << new_req.max_acceleration_scaling_factor);
+      scaling_factor_corrected = true;
+      continue;
+    }
+
+    succeeded = true;
+  }
+
+  if (!succeeded) {
+    joint_trajectory.points.clear();
+    throw LinTrajectoryConversionFailure("Failed to generate valid joint trajectory from the Cartesian path",
+                                         error_code.val);
+  }
+
+  if (scaling_factor_corrected) {
+    ROS_INFO_STREAM("Joint velocity or acceleration limit violated.\nScaling factors have been corrected to vel: " <<
+                     new_req.max_velocity_scaling_factor << " accel: " << new_req.max_acceleration_scaling_factor);
   }
 }
 

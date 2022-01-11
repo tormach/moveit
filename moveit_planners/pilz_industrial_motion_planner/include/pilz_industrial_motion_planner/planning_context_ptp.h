@@ -54,12 +54,12 @@ MOVEIT_CLASS_FORWARD(PlanningContext);
 /**
  * @brief PlanningContext for obtaining PTP trajectories
  */
-class PlanningContextPTP : public pilz_industrial_motion_planner::PlanningContextBase<TrajectoryGeneratorPTP>
+class PlanningContextPTP : public PlanningContextBase<TrajectoryGeneratorPTP>
 {
 public:
   PlanningContextPTP(const std::string& name, const std::string& group, const moveit::core::RobotModelConstPtr& model,
-                     const pilz_industrial_motion_planner::LimitsContainer& limits)
-    : pilz_industrial_motion_planner::PlanningContextBase<TrajectoryGeneratorPTP>(name, group, model, limits)
+                     const LimitsContainer& limits, std::shared_ptr<ErrorDetailsContainer> error_details, std::shared_ptr<PlanningParameters> planning_parameters)
+    : PlanningContextBase<TrajectoryGeneratorPTP>(name, group, model, limits, std::move(error_details), std::move(planning_parameters))
   {
   }
 };

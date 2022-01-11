@@ -40,6 +40,7 @@
 #include <Eigen/Geometry>
 #include <kdl/frames.hpp>
 #include <kdl/trajectory.hpp>
+#include <utility>
 #include <moveit/planning_interface/planning_interface.h>
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/planning_scene/planning_scene.h>
@@ -48,6 +49,8 @@
 #include "pilz_industrial_motion_planner/limits_container.h"
 #include "pilz_industrial_motion_planner/trajectory_functions.h"
 #include "pilz_industrial_motion_planner/trajectory_generation_exceptions.h"
+#include "pilz_industrial_motion_planner/error_details_container.h"
+#include "pilz_industrial_motion_planner/planning_parameters.h"
 
 using namespace pilz_industrial_motion_planner;
 
@@ -91,8 +94,11 @@ class TrajectoryGenerator
 {
 public:
   TrajectoryGenerator(const robot_model::RobotModelConstPtr& robot_model,
-                      const pilz_industrial_motion_planner::LimitsContainer& planner_limits)
-    : robot_model_(robot_model), planner_limits_(planner_limits)
+                      const LimitsContainer& planner_limits,
+                      std::shared_ptr<ErrorDetailsContainer> error_details,
+                      std::shared_ptr<PlanningParameters> planning_parameters)
+    : robot_model_(robot_model), planner_limits_(planner_limits),
+    error_details_(std::move(error_details)), planning_parameters_(std::move(planning_parameters))
   {
   }
 
@@ -266,10 +272,13 @@ private:
 
 protected:
   const robot_model::RobotModelConstPtr robot_model_;
-  const pilz_industrial_motion_planner::LimitsContainer planner_limits_;
+  const LimitsContainer planner_limits_;
+  std::shared_ptr<ErrorDetailsContainer> error_details_;
+  std::shared_ptr<PlanningParameters> planning_parameters_;
   static constexpr double MIN_SCALING_FACTOR{ 0.0001 };
   static constexpr double MAX_SCALING_FACTOR{ 1. };
   static constexpr double VELOCITY_TOLERANCE{ 1e-8 };
+  static constexpr double MIN_SCALING_CORRECTION_FACTOR{ 0.01 };
 };
 
 inline bool TrajectoryGenerator::isScalingFactorValid(const double& scaling_factor)

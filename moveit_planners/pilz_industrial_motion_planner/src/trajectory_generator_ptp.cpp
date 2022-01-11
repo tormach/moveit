@@ -38,6 +38,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <utility>
 
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -45,8 +46,10 @@
 namespace pilz_industrial_motion_planner
 {
 TrajectoryGeneratorPTP::TrajectoryGeneratorPTP(const robot_model::RobotModelConstPtr& robot_model,
-                                               const LimitsContainer& planner_limits, const std::string& group_name)
-  : TrajectoryGenerator::TrajectoryGenerator(robot_model, planner_limits)
+                                               const LimitsContainer& planner_limits, const std::string& group_name,
+                                               std::shared_ptr<ErrorDetailsContainer> error_details,
+                                               std::shared_ptr<PlanningParameters> planning_parameters)
+  : TrajectoryGenerator::TrajectoryGenerator(robot_model, planner_limits, std::move(error_details), std::move(planning_parameters))
 {
   if (!planner_limits_.hasJointLimits())
   {
@@ -235,9 +238,10 @@ void TrajectoryGeneratorPTP::extractMotionPlanInfo(const planning_scene::Plannin
 
 void TrajectoryGeneratorPTP::plan(const planning_scene::PlanningSceneConstPtr& /*scene*/,
                                   const planning_interface::MotionPlanRequest& req, const MotionPlanInfo& plan_info,
-                                  const double& sampling_time, trajectory_msgs::JointTrajectory& joint_trajectory)
+                                  const double& /*sampling_time*/, trajectory_msgs::JointTrajectory& joint_trajectory)
 {
   // plan the ptp trajectory
+  const double sampling_time = planning_parameters_->getSamplingTime();
   planPTP(plan_info.start_joint_position, plan_info.goal_joint_position, joint_trajectory,
           req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor, sampling_time);
 }

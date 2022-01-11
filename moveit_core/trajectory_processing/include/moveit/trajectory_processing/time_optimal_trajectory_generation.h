@@ -160,6 +160,13 @@ private:
   mutable std::list<TrajectoryStep>::const_iterator cached_trajectory_segment_;
 };
 
+class JointScalingParameters {
+public:
+  std::vector<std::string> joint_names;
+  std::vector<double> joint_velocity_scaling_factors;
+  std::vector<double> joint_acceleration_scaling_factors;
+};
+
 MOVEIT_CLASS_FORWARD(TimeOptimalTrajectoryGeneration);
 class TimeOptimalTrajectoryGeneration : public TimeParameterization
 {
@@ -167,8 +174,12 @@ public:
   TimeOptimalTrajectoryGeneration(const double path_tolerance = 0.1, const double resample_dt = 0.1,
                                   const double min_angle_change = 0.00001);
 
+
   bool computeTimeStamps(robot_trajectory::RobotTrajectory& trajectory, const double max_velocity_scaling_factor = 1.0,
                          const double max_acceleration_scaling_factor = 1.0) const override;
+
+  bool computeTimeStamps(robot_trajectory::RobotTrajectory& trajectory, const double max_velocity_scaling_factor,
+                         const double max_acceleration_scaling_factor, const JointScalingParameters &max_joint_scaling_parameters) const;
 
 private:
   const double path_tolerance_;

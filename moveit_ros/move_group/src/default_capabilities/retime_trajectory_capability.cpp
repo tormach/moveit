@@ -47,8 +47,13 @@ namespace move_group
       }
       else if (req.algorithm == "time_optimal_trajectory_generation")
       {
+        trajectory_processing::JointScalingParameters joint_scaling_parameters {
+          std::move(req.joint_names),
+          std::move(req.joint_velocity_scaling_factors),
+          std::move(req.joint_acceleration_scaling_factors)
+        };
         trajectory_processing::TimeOptimalTrajectoryGeneration time_param;
-        time_param.computeTimeStamps(traj_obj, req.velocity_scaling_factor, req.acceleration_scaling_factor);
+        time_param.computeTimeStamps(traj_obj, req.velocity_scaling_factor, req.acceleration_scaling_factor, joint_scaling_parameters);
       }
       else
       {

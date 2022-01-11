@@ -867,6 +867,14 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
                                                         const double max_velocity_scaling_factor,
                                                         const double max_acceleration_scaling_factor) const
 {
+  return computeTimeStamps(trajectory, max_velocity_scaling_factor, max_acceleration_scaling_factor, JointScalingParameters());
+}
+
+bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotTrajectory& trajectory,
+                                                        const double max_velocity_scaling_factor,
+                                                        const double max_acceleration_scaling_factor,
+                                                        const JointScalingParameters &max_joint_scaling_parameters) const
+{
   if (trajectory.empty())
     return true;
 
@@ -910,6 +918,63 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
                    max_acceleration_scaling_factor, acceleration_scaling_factor);
   }
 
+  std::map<std::string, double> joint_acceleration_scaling_factors;
+  std::map<std::string, double> joint_velocity_scaling_factors;
+  for (std::size_t i = 0; i < max_joint_scaling_parameters.joint_names.size(); ++i)
+  {
+    const auto &name = max_joint_scaling_parameters.joint_names.at(i);
+
+    double joint_acceleration_scaling_factor = 1.0;
+    if (i >= max_joint_scaling_parameters.joint_acceleration_scaling_factors.size()) {
+      ROS_WARN_NAMED(LOGNAME, "No acceleration scaling factor specified for %s, defaulting to %f instead.",
+                     name.c_str(), joint_acceleration_scaling_factor);
+    }
+    else
+    {
+      const auto &max_joint_acceleration_scaling_factor = max_joint_scaling_parameters.joint_acceleration_scaling_factors.at(i);
+      if (max_joint_acceleration_scaling_factor > 0.0 && max_joint_acceleration_scaling_factor <= 1.0)
+      {
+        joint_acceleration_scaling_factor = max_joint_acceleration_scaling_factor;
+      }
+      else if (max_joint_acceleration_scaling_factor == 0.0)
+      {
+        ROS_DEBUG_NAMED(LOGNAME, "A joint_acceleration_scaling_factor of 0.0 was specified for joint %s, default to %f instead.",
+                        name.c_str(), joint_acceleration_scaling_factor);
+      }
+      else
+      {
+        ROS_WARN_NAMED(LOGNAME, "Invalid joint_acceleration_scaling_factor %f specified for joint %s, defaulting to %f instead.",
+                       max_joint_acceleration_scaling_factor, name.c_str(), joint_acceleration_scaling_factor);
+      }
+    }
+    joint_velocity_scaling_factors[name] = joint_acceleration_scaling_factor;
+
+    double joint_velocity_scaling_factor = 1.0;
+    if (i >= max_joint_scaling_parameters.joint_velocity_scaling_factors.size()) {
+      ROS_WARN_NAMED(LOGNAME, "No velocity scaling factor specified for %s, defaulting to %f instead.",
+                     name.c_str(), joint_velocity_scaling_factor);
+    }
+    else
+    {
+      const auto &max_joint_velocity_scaling_factor = max_joint_scaling_parameters.joint_velocity_scaling_factors.at(i);
+      if (max_joint_velocity_scaling_factor > 0.0 && max_joint_velocity_scaling_factor <= 1.0)
+      {
+        joint_velocity_scaling_factor = max_joint_velocity_scaling_factor;
+      }
+      else if (max_joint_velocity_scaling_factor == 0.0)
+      {
+        ROS_DEBUG_NAMED(LOGNAME, "A joint_velocity_scaling_factor of 0.0 was specified for joint %s, default to %f instead.",
+                        name.c_str(), joint_velocity_scaling_factor);
+      }
+      else
+      {
+        ROS_WARN_NAMED(LOGNAME, "Invalid joint_velocity_scaling_factor %f specified for joint %s, defaulting to %f instead.",
+                       max_joint_velocity_scaling_factor, name.c_str(), joint_velocity_scaling_factor);
+      }
+    }
+    joint_velocity_scaling_factors[name] = joint_velocity_scaling_factor;
+  }
+
   // This lib does not actually work properly when angles wrap around, so we need to unwind the path first
   trajectory.unwind();
 
@@ -925,6 +990,15 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
   Eigen::VectorXd max_acceleration(num_joints);
   for (size_t j = 0; j < num_joints; ++j)
   {
+    double joint_velocity_scaling_factor = velocity_scaling_factor;
+    double joint_acceleration_scaling_factor = acceleration_scaling_factor;
+    if (joint_velocity_scaling_factors.count(vars[j])) {
+      joint_velocity_scaling_factor = joint_velocity_scaling_factors.at(vars[j]);
+    }
+    if (joint_acceleration_scaling_factors.count(vars[j])) {
+      joint_acceleration_scaling_factor = joint_acceleration_scaling_factors.at(vars[j]);
+    }
+
     const moveit::core::VariableBounds& bounds = rmodel.getVariableBounds(vars[j]);
 
     // Limits need to be non-zero, otherwise we never exit
@@ -938,7 +1012,7 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
         return false;
       }
       max_velocity[j] =
-          std::min(std::fabs(bounds.max_velocity_), std::fabs(bounds.min_velocity_)) * velocity_scaling_factor;
+          std::min(std::fabs(bounds.max_velocity_), std::fabs(bounds.min_velocity_)) * joint_velocity_scaling_factor;
     }
 
     max_acceleration[j] = 1.0;
@@ -951,7 +1025,7 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
         return false;
       }
       max_acceleration[j] = std::min(std::fabs(bounds.max_acceleration_), std::fabs(bounds.min_acceleration_)) *
-                            acceleration_scaling_factor;
+                            joint_acceleration_scaling_factor;
     }
   }
 

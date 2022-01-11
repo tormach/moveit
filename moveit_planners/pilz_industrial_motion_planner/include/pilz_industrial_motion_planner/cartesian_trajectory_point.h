@@ -46,7 +46,7 @@ struct CartesianTrajectoryPoint
 {
   geometry_msgs::Pose pose;
   geometry_msgs::Twist velocity;
-  geometry_msgs::Twist acceleartion;
+  geometry_msgs::Twist acceleration;
   ros::Duration time_from_start;
 };
 

@@ -51,9 +51,9 @@ pilz_industrial_motion_planner::PlanningContextLoaderLIN::~PlanningContextLoader
 bool pilz_industrial_motion_planner::PlanningContextLoaderLIN::loadContext(
     planning_interface::PlanningContextPtr& planning_context, const std::string& name, const std::string& group) const
 {
-  if (limits_set_ && model_set_)
+  if (limits_set_ && model_set_ && error_details_set_ && planning_parameters_set_)
   {
-    planning_context = std::make_shared<PlanningContextLIN>(name, group, model_, limits_);
+    planning_context = std::make_shared<PlanningContextLIN>(name, group, model_, limits_, error_details_, planning_parameters_);
     return true;
   }
   else
@@ -66,6 +66,14 @@ bool pilz_industrial_motion_planner::PlanningContextLoaderLIN::loadContext(
     if (!model_set_)
     {
       ROS_ERROR_STREAM("Robot model was not set");
+    }
+    if (!error_details_set_)
+    {
+      ROS_ERROR_STREAM("Error details container was not set. Cannot report error details.");
+    }
+    if (!planning_parameters_set_)
+    {
+      ROS_ERROR_STREAM("Planning parameters have not been set.");
     }
     return false;
   }

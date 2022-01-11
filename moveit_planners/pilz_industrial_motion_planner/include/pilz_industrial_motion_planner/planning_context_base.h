@@ -46,6 +46,7 @@
 
 #include <atomic>
 #include <thread>
+#include <utility>
 
 namespace pilz_industrial_motion_planner
 {
@@ -58,12 +59,14 @@ class PlanningContextBase : public planning_interface::PlanningContext
 public:
   PlanningContextBase<GeneratorT>(const std::string& name, const std::string& group,
                                   const moveit::core::RobotModelConstPtr& model,
-                                  const pilz_industrial_motion_planner::LimitsContainer& limits)
+                                  const LimitsContainer& limits,
+                                  std::shared_ptr<ErrorDetailsContainer> error_details,
+                                  std::shared_ptr<PlanningParameters> planning_parameters)
     : planning_interface::PlanningContext(name, group)
     , terminated_(false)
     , model_(model)
     , limits_(limits)
-    , generator_(model, limits_, group)
+    , generator_(model, limits_, group, std::move(error_details), std::move(planning_parameters))
   {
   }
 
@@ -110,7 +113,7 @@ public:
   robot_model::RobotModelConstPtr model_;
 
   /// Joint limits to be used during planning
-  pilz_industrial_motion_planner::LimitsContainer limits_;
+  LimitsContainer limits_;
 
 protected:
   GeneratorT generator_;
@@ -128,7 +131,7 @@ bool pilz_industrial_motion_planner::PlanningContextBase<GeneratorT>::solve(plan
       moveit::core::robotStateToRobotStateMsg(getPlanningScene()->getCurrentState(), current_state);
       request_.start_state = current_state;
     }
-    bool result = generator_.generate(getPlanningScene(), request_, res);
+    bool result = generator_.generate(getPlanningScene(), request_, res, 0.05);
     return result;
     // res.error_code_.val = moveit_msgs::MoveItErrorCodes::INVALID_MOTION_PLAN;
     // return false; // TODO

@@ -40,6 +40,8 @@
 
 #include "pilz_industrial_motion_planner/trajectory_generator.h"
 #include "pilz_industrial_motion_planner/velocity_profile_atrap.h"
+#include "pilz_industrial_motion_planner/error_details_container.h"
+#include "pilz_industrial_motion_planner/planning_parameters.h"
 
 using namespace pilz_industrial_motion_planner;
 
@@ -68,12 +70,14 @@ public:
    * @param planner_limits: limits in joint and Cartesian spaces
    */
   TrajectoryGeneratorLIN(const robot_model::RobotModelConstPtr& robot_model,
-                         const pilz_industrial_motion_planner::LimitsContainer& planner_limits,
-                         const std::string& group_name);
+                         const LimitsContainer& planner_limits,
+                         const std::string& group_name,
+                         std::shared_ptr<ErrorDetailsContainer> error_details,
+                         std::shared_ptr<PlanningParameters> planning_parameters);
 
 private:
   void extractMotionPlanInfo(const planning_scene::PlanningSceneConstPtr& scene,
-                             const planning_interface::MotionPlanRequest& req, MotionPlanInfo& info) const final;
+                             const planning_interface::MotionPlanRequest& req, MotionPlanInfo& info) const override;
 
   void plan(const planning_scene::PlanningSceneConstPtr& scene, const planning_interface::MotionPlanRequest& req,
             const MotionPlanInfo& plan_info, const double& sampling_time,

@@ -79,8 +79,10 @@ public:
    *
    */
   TrajectoryGeneratorCIRC(const robot_model::RobotModelConstPtr& robot_model,
-                          const pilz_industrial_motion_planner::LimitsContainer& planner_limits,
-                          const std::string& group_name);
+                          const LimitsContainer& planner_limits,
+                          const std::string& group_name,
+                          std::shared_ptr<ErrorDetailsContainer> error_details,
+                          std::shared_ptr<PlanningParameters> planning_parameters);
 
 private:
   void cmdSpecificRequestValidation(const planning_interface::MotionPlanRequest& req) const override;

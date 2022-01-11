@@ -41,6 +41,7 @@
 
 #include <atomic>
 #include <thread>
+#include <utility>
 
 #include "pilz_industrial_motion_planner/planning_context_base.h"
 #include "pilz_industrial_motion_planner/trajectory_generator_lin.h"
@@ -52,12 +53,13 @@ MOVEIT_CLASS_FORWARD(PlanningContext);
 /**
  * @brief PlanningContext for obtaining LIN trajectories
  */
-class PlanningContextLIN : public pilz_industrial_motion_planner::PlanningContextBase<TrajectoryGeneratorLIN>
+class PlanningContextLIN : public PlanningContextBase<TrajectoryGeneratorLIN>
 {
 public:
   PlanningContextLIN(const std::string& name, const std::string& group, const moveit::core::RobotModelConstPtr& model,
-                     const pilz_industrial_motion_planner::LimitsContainer& limits)
-    : pilz_industrial_motion_planner::PlanningContextBase<TrajectoryGeneratorLIN>(name, group, model, limits)
+                     const LimitsContainer& limits, std::shared_ptr<ErrorDetailsContainer> error_details,
+                     std::shared_ptr<PlanningParameters> planning_parameters)
+    : PlanningContextBase<TrajectoryGeneratorLIN>(name, group, model, limits, std::move(error_details), std::move(planning_parameters))
   {
   }
 };

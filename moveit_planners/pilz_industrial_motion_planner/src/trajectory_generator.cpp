@@ -257,7 +257,7 @@ void TrajectoryGenerator::setSuccessResponse(const moveit::core::RobotState& sta
                                              const ros::Time& planning_start,
                                              planning_interface::MotionPlanResponse& res) const
 {
-  robot_trajectory::RobotTrajectoryPtr rt(new robot_trajectory::RobotTrajectory(robot_model_, group_name));
+  robot_trajectory::RobotTrajectoryPtr rt(new robot_trajectory::RobotTrajectory(robot_model_));
   rt->setRobotTrajectoryMsg(start_state, joint_trajectory);
 
   res.trajectory_ = rt;
@@ -308,8 +308,10 @@ bool TrajectoryGenerator::generate(const planning_scene::PlanningSceneConstPtr& 
   }
   catch (const MoveItErrorCodeException& ex)
   {
-    ROS_ERROR_STREAM(ex.what());
+    ROS_INFO_STREAM(ex.what());
     res.error_code_.val = ex.getErrorCode();
+    error_details_->setErrorCode(res.error_code_.val);
+    error_details_->setErrorMessage(ex.what());
     setFailureResponse(planning_begin, res);
     return false;
   }
@@ -320,8 +322,10 @@ bool TrajectoryGenerator::generate(const planning_scene::PlanningSceneConstPtr& 
   }
   catch (const MoveItErrorCodeException& ex)
   {
-    ROS_ERROR_STREAM(ex.what());
+    ROS_INFO_STREAM(ex.what());
     res.error_code_.val = ex.getErrorCode();
+    error_details_->setErrorCode(res.error_code_.val);
+    error_details_->setErrorMessage(ex.what());
     setFailureResponse(planning_begin, res);
     return false;
   }
@@ -333,8 +337,10 @@ bool TrajectoryGenerator::generate(const planning_scene::PlanningSceneConstPtr& 
   }
   catch (const MoveItErrorCodeException& ex)
   {
-    ROS_ERROR_STREAM(ex.what());
+    ROS_INFO_STREAM(ex.what());
     res.error_code_.val = ex.getErrorCode();
+    error_details_->setErrorCode(res.error_code_.val);
+    error_details_->setErrorMessage(ex.what());
     setFailureResponse(planning_begin, res);
     return false;
   }
@@ -346,8 +352,10 @@ bool TrajectoryGenerator::generate(const planning_scene::PlanningSceneConstPtr& 
   }
   catch (const MoveItErrorCodeException& ex)
   {
-    ROS_WARN_STREAM(ex.what());
+    ROS_INFO_STREAM(ex.what());
     res.error_code_.val = ex.getErrorCode();
+    error_details_->setErrorCode(res.error_code_.val);
+    error_details_->setErrorMessage(ex.what());
     setFailureResponse(planning_begin, res);
     return false;
   }

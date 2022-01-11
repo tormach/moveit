@@ -75,7 +75,9 @@ add_library(${PROJECT_NAME}_lib
   src/joint_limits_container.cpp
   src/cartesian_limits_aggregator.cpp
   src/cartesian_limit.cpp
+  src/error_details_container.cpp
   src/limits_container.cpp
+  src/planning_parameters.cpp
   src/trajectory_functions.cpp
   src/plan_components_builder.cpp
 )
@@ -92,6 +94,8 @@ add_library(${PROJECT_NAME}
             src/planning_context_loader.cpp
             src/joint_limits_aggregator.cpp
             src/joint_limits_container.cpp
+            src/error_details_container.cpp
+            src/planning_parameters.cpp
             src/limits_container.cpp
             src/cartesian_limit.cpp
             src/cartesian_limits_aggregator.cpp
@@ -107,6 +111,8 @@ add_library(planning_context_loader_ptp
             src/trajectory_generator_ptp.cpp
             src/velocity_profile_atrap.cpp
             src/joint_limits_container.cpp
+            src/error_details_container.cpp
+            src/planning_parameters.cpp
             )
 target_link_libraries(planning_context_loader_ptp
                       ${catkin_LIBRARIES})
@@ -149,7 +155,9 @@ add_library(sequence_capability
             src/trajectory_blender_transition_window.cpp
             src/joint_limits_aggregator.cpp  # do we need joint limits and cartesian_limit here?
             src/joint_limits_container.cpp
+            src/error_details_container.cpp
             src/limits_container.cpp
+            src/planning_parameters.cpp
             src/cartesian_limit.cpp
             src/cartesian_limits_aggregator.cpp
             )

@@ -42,6 +42,8 @@
 #include <moveit/planning_interface/planning_interface.h>
 
 #include "pilz_industrial_motion_planner/limits_container.h"
+#include "pilz_industrial_motion_planner/error_details_container.h"
+#include "pilz_industrial_motion_planner/planning_parameters.h"
 
 namespace pilz_industrial_motion_planner
 {
@@ -74,6 +76,20 @@ public:
    * @return true if limits could be set
    */
   virtual bool setLimits(const pilz_industrial_motion_planner::LimitsContainer& limits);
+
+  /**
+   * @brief Set the error details container for reporting errors up the chain.
+   * @param error_details container of error details
+   * @return true if the container could be set
+   */
+  virtual bool setErrorDetails(std::shared_ptr<ErrorDetailsContainer> error_details);
+
+  /**
+   * @brief Set the planning parameters which can be changed at runtime.
+   * @param planning_parameters planning parameter object
+   * @return true if the planning parameters could be set
+   */
+  virtual bool setPlanningParameters(std::shared_ptr<PlanningParameters> planning_parameters);
 
   /**
    * @brief Return the planning context
@@ -109,6 +125,18 @@ protected:
 
   /// True if model is set
   bool model_set_;
+
+  /// Error details for later inspection
+  std::shared_ptr<pilz_industrial_motion_planner::ErrorDetailsContainer> error_details_;
+
+  /// True if error details have been set
+  bool error_details_set_;
+
+  /// Planning parameters
+  std::shared_ptr<pilz_industrial_motion_planner::PlanningParameters> planning_parameters_;
+
+  /// True if planning parameters have been set
+  bool planning_parameters_set_;
 
   /// The robot model
   moveit::core::RobotModelConstPtr model_;
