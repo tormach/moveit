@@ -28,7 +28,7 @@ namespace move_group
     moveit::core::RobotState robot_state =
         planning_scene_monitor::LockedPlanningSceneRO(context_->planning_scene_monitor_)->getCurrentState();
 
-    if (const moveit::core::JointModelGroup* jmg = robot_state.getJointModelGroup(req.group_name))
+    if (robot_state.getJointModelGroup(req.group_name))
     {
       robot_trajectory::RobotTrajectory traj_obj(context_->planning_scene_monitor_->getRobotModel(), req.group_name);
       traj_obj.setRobotTrajectoryMsg(robot_state, req.trajectory);
