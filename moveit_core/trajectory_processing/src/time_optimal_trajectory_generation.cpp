@@ -857,7 +857,8 @@ Eigen::VectorXd Trajectory::getAcceleration(double time) const
 
 TimeOptimalTrajectoryGeneration::TimeOptimalTrajectoryGeneration(const double path_tolerance,
                                                                  const double resample_dt,
-                                                                 const double min_angle_change)
+                                                                 const double min_angle_change
+                                                                 __attribute__((unused)))
   : path_tolerance_(path_tolerance), resample_dt_(resample_dt), min_angle_change_(0.000001), time_step_default_(0.001)
 {
 }
