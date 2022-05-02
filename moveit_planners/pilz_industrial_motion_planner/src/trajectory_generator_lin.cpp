@@ -207,16 +207,19 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
       else if (strict_limits) {
         break; // planning failed due to joint velocity/acceleration violation
       }
-      else if (output_tcp_joints) {
-        succeeded = true;
-        break; // velocity/acceleration violation, but outputting tcp joints, no need to scale
-      }
+
       new_req.max_velocity_scaling_factor = max_scaling_factors.first * new_req.max_velocity_scaling_factor;
       new_req.max_acceleration_scaling_factor = max_scaling_factors.second * new_req.max_acceleration_scaling_factor;
       if (new_req.max_velocity_scaling_factor < min_scaling_correction_factor ||
           new_req.max_acceleration_scaling_factor < min_scaling_correction_factor)
       {
+        ROS_INFO_STREAM("Joint velocity or acceleration limit violated and below minimum scaling factor.");
         break; // would require scaling factor below threshold
+      }
+
+      if (output_tcp_joints) {
+        succeeded = true;
+        break; // velocity/acceleration violation, but outputting tcp joints, no need to scale
       }
 
       ROS_DEBUG_STREAM("updating scaling factors " <<

@@ -51,6 +51,7 @@
 namespace pilz_industrial_motion_planner
 {
 static const std::string PARAM_NAMESPACE_LIMITS = "robot_description_planning";
+static const std::string PARAM_PLANNING_PARAMETERS = "~/pilz_industrial_motion_planner";
 
 CommandListManager::CommandListManager(const ros::NodeHandle& nh, const moveit::core::RobotModelConstPtr& model)
   : nh_(nh), model_(model)
@@ -66,13 +67,17 @@ CommandListManager::CommandListManager(const ros::NodeHandle& nh, const moveit::
       pilz_industrial_motion_planner::CartesianLimitsAggregator::getAggregatedLimits(
           ros::NodeHandle(PARAM_NAMESPACE_LIMITS));
 
+  // Obtain planning parameters
+  planning_parameters_ = std::make_shared<pilz_industrial_motion_planner::PlanningParameters>(
+      ros::NodeHandle(PARAM_PLANNING_PARAMETERS));
+
   pilz_industrial_motion_planner::LimitsContainer limits;
   limits.setJointLimits(aggregated_limit_active_joints);
   limits.setCartesianLimits(cartesian_limit);
 
   plan_comp_builder_.setModel(model);
   plan_comp_builder_.setBlender(std::unique_ptr<pilz_industrial_motion_planner::TrajectoryBlender>(
-      new pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow(limits)));
+      new pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow(limits, planning_parameters_)));
 }
 
 RobotTrajCont CommandListManager::solve(const planning_scene::PlanningSceneConstPtr& planning_scene,
@@ -122,7 +127,11 @@ bool CommandListManager::checkRadiiForOverlap(const robot_trajectory::RobotTraje
     return false;
   }
 
-  const std::string& blend_frame{ getSolverTipFrame(model_->getJointModelGroup(traj_A.getGroupName())) };
+  std::string group_name = traj_A.getGroupName();
+  if (group_name.rfind("_tcp") != std::string::npos) {
+    group_name = group_name.substr(0, group_name.length() - 4);
+  }
+  const std::string& blend_frame{ getSolverTipFrame(model_->getJointModelGroup(group_name)) };
   auto distance_endpoints = (traj_A.getLastWayPoint().getFrameTransform(blend_frame).translation() -
                              traj_B.getLastWayPoint().getFrameTransform(blend_frame).translation())
                                 .norm();
@@ -232,7 +241,13 @@ CommandListManager::solveSequenceItems(const planning_scene::PlanningSceneConstP
   for (const auto& seq_item : req_list.items)
   {
     planning_interface::MotionPlanRequest req{ seq_item.req };
-    setStartState(motion_plan_responses, req.group_name, req.start_state);
+    if (planning_parameters_->getOutputTcpJoints())
+    {
+      setStartState(motion_plan_responses, req.group_name + "_tcp", req.start_state);
+    }
+    else {
+      setStartState(motion_plan_responses, req.group_name, req.start_state);
+    }
 
     planning_interface::MotionPlanResponse res;
     planning_pipeline->generatePlan(planning_scene, req, res);

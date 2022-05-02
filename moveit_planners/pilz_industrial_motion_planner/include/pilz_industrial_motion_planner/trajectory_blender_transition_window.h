@@ -35,6 +35,7 @@
 #pragma once
 
 #include <moveit/planning_interface/planning_interface.h>
+
 #include "pilz_industrial_motion_planner/cartesian_trajectory.h"
 #include "pilz_industrial_motion_planner/cartesian_trajectory_point.h"
 #include "pilz_industrial_motion_planner/trajectory_blend_request.h"
@@ -52,8 +53,9 @@ namespace pilz_industrial_motion_planner
 class TrajectoryBlenderTransitionWindow : public TrajectoryBlender
 {
 public:
-  TrajectoryBlenderTransitionWindow(const LimitsContainer& planner_limits)
-    : TrajectoryBlender::TrajectoryBlender(planner_limits)
+  TrajectoryBlenderTransitionWindow(const LimitsContainer& planner_limits,
+                                    std::shared_ptr<pilz_industrial_motion_planner::PlanningParameters> planning_parameters)
+    : TrajectoryBlender::TrajectoryBlender(planner_limits, std::move(planning_parameters))
   {
   }
 

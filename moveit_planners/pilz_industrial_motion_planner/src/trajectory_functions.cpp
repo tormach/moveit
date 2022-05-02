@@ -319,21 +319,15 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       {
         double joint_velocity =
             (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current_sample;
-        if (!output_tcp_joints)
-        {
-          point.velocities.push_back(joint_velocity);
-          point.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
-                                        (duration_current_sample + sampling_time) * 2.0);
-        }
+        point.velocities.push_back(joint_velocity);
+        point.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
+                                      (duration_current_sample + sampling_time) * 2.0);
         joint_velocity_last[joint_name] = joint_velocity;
       }
       else
       {
-        if (!output_tcp_joints)
-        {
-          point.velocities.push_back(0.);
-          point.accelerations.push_back(0.);
-        }
+        point.velocities.push_back(0.);
+        point.accelerations.push_back(0.);
         joint_velocity_last[joint_name] = 0.;
       }
     }
@@ -349,6 +343,10 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       }
       point.positions.push_back(tcp_pos);  // tcp_lin
       point.positions.push_back(tcp_rot);  // tcp_rot
+      point.velocities.push_back(0.0);
+      point.velocities.push_back(0.0);
+      point.accelerations.push_back(0.0);
+      point.accelerations.push_back(0.0);
       frame_sample_last = frame_sample;
     }
 
@@ -374,7 +372,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const pilz_industrial_motion_planner::CartesianTrajectory& trajectory, const std::string& group_name,
     const std::string& link_name, const std::map<std::string, double>& initial_joint_position,
     const std::map<std::string, double>& initial_joint_velocity, trajectory_msgs::JointTrajectory& joint_trajectory,
-    moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors, bool check_self_collision)
+    moveit_msgs::MoveItErrorCodes& error_code, bool check_self_collision, bool output_tcp_joints)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
 
@@ -390,12 +388,19 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   {
     joint_trajectory.joint_names.push_back(joint_position.first);
   }
+  std::vector<std::string> joint_names = joint_trajectory.joint_names;
+  joint_names.erase(std::remove_if(joint_names.begin(), joint_names.end(),
+                 [](const std::string &s){return (s == "tcp_lin") || (s == "tcp_rot");}), joint_names.end());
+
   std::map<std::string, double> ik_solution;
-  bool success = true;
-  max_scaling_factors.first = 1.0;
-  max_scaling_factors.second = 1.0;
+  KDL::Frame frame_sample_last;
+  KDL::RotationalInterpolation_SingleAxis rot_interpolation;
+  double tcp_pos = 0.0;
+  double tcp_rot = 0.0;
   for (size_t i = 0; i < trajectory.points.size(); ++i)
   {
+    KDL::Frame frame_sample;
+    tf2::fromMsg(trajectory.points.at(i).pose, frame_sample);
     // compute inverse kinematics
     if (!computePoseIK(scene, group_name, link_name, trajectory.points.at(i).pose, robot_model->getModelFrame(),
                        ik_solution_last, ik_solution, check_self_collision))
@@ -427,19 +432,19 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       // overload generateJointTrajectory(...,
       // KDL::Trajectory, ...)
       // TODO: refactor to avoid code duplication.
-      max_scaling_factors.first = std::min(max_scaling_factors.first, tmp_max_scaling_factors.first);
-      max_scaling_factors.second = std::min(max_scaling_factors.second, tmp_max_scaling_factors.second);
       ROS_DEBUG_STREAM("Inverse kinematics solution of the " << i
                                                              << "th sample violates the joint "
                                                                 "velocity/acceleration/deceleration limits.");
-      success = false;
+      error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
+      joint_trajectory.points.clear();
+      return false;
       // LCOV_EXCL_STOP
     }
 
     // compute the waypoint
     trajectory_msgs::JointTrajectoryPoint waypoint_joint;
     waypoint_joint.time_from_start = ros::Duration(trajectory.points.at(i).time_from_start);
-    for (const auto& joint_name : joint_trajectory.joint_names)
+    for (const auto& joint_name : joint_names)
     {
       waypoint_joint.positions.push_back(ik_solution.at(joint_name));
       double joint_velocity = (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current;
@@ -450,16 +455,27 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       joint_velocity_last[joint_name] = joint_velocity;
     }
 
+    if (output_tcp_joints)
+    {
+      if (i > 0) {
+        KDL::Frame diff = frame_sample * frame_sample_last.Inverse();
+        tcp_pos += diff.p.Norm();
+        rot_interpolation.SetStartEnd(frame_sample_last.M, frame_sample.M);
+        tcp_rot += rot_interpolation.Angle();
+      }
+      waypoint_joint.positions.push_back(tcp_pos);  // tcp_lin
+      waypoint_joint.positions.push_back(tcp_rot);  // tcp_rot
+      waypoint_joint.velocities.push_back(0.0);
+      waypoint_joint.velocities.push_back(0.0);
+      waypoint_joint.accelerations.push_back(0.0);
+      waypoint_joint.accelerations.push_back(0.0);
+      frame_sample_last = frame_sample;
+    }
+
     // update joint trajectory
     joint_trajectory.points.push_back(waypoint_joint);
     ik_solution_last = ik_solution;
     duration_last = duration_current;
-  }
-
-  if (!success) {
-    error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
-    joint_trajectory.points.clear();
-    return false;
   }
 
   error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
@@ -467,7 +483,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
                                                      << " ms | " << duration_ms / joint_trajectory.points.size()
                                                      << " ms per Point");
-
   return true;
 }
 
@@ -523,12 +538,17 @@ bool pilz_industrial_motion_planner::determineAndCheckSamplingTime(
 
 bool pilz_industrial_motion_planner::isRobotStateEqual(const moveit::core::RobotState& state1,
                                                        const moveit::core::RobotState& state2,
-                                                       const std::string& joint_group_name, double epsilon)
+                                                       const std::string& joint_group_name, double epsilon,
+                                                       bool compare_velocity, bool compare_acceleration)
 {
   Eigen::VectorXd joint_position_1, joint_position_2;
+  std::string group_name = joint_group_name;
+  if (group_name.rfind("_tcp") != std::string::npos) {
+    group_name = group_name.substr(0, group_name.length() - 4);
+  }
 
-  state1.copyJointGroupPositions(joint_group_name, joint_position_1);
-  state2.copyJointGroupPositions(joint_group_name, joint_position_2);
+  state1.copyJointGroupPositions(group_name, joint_position_1);
+  state2.copyJointGroupPositions(group_name, joint_position_2);
 
   if ((joint_position_1 - joint_position_2).norm() > epsilon)
   {
@@ -537,28 +557,33 @@ bool pilz_industrial_motion_planner::isRobotStateEqual(const moveit::core::Robot
     return false;
   }
 
-  Eigen::VectorXd joint_velocity_1, joint_velocity_2;
+  if (compare_velocity) {
+    Eigen::VectorXd joint_velocity_1, joint_velocity_2;
 
-  state1.copyJointGroupVelocities(joint_group_name, joint_velocity_1);
-  state2.copyJointGroupVelocities(joint_group_name, joint_velocity_2);
+    state1.copyJointGroupVelocities(group_name, joint_velocity_1);
+    state2.copyJointGroupVelocities(group_name, joint_velocity_2);
 
-  if ((joint_velocity_1 - joint_velocity_2).norm() > epsilon)
-  {
-    ROS_DEBUG_STREAM("Joint velocities of the two states are different. state1: " << joint_velocity_1
-                                                                                  << " state2: " << joint_velocity_2);
-    return false;
+    if ((joint_velocity_1 - joint_velocity_2).norm() > epsilon)
+    {
+      ROS_DEBUG_STREAM("Joint velocities of the two states are different. state1: " << joint_velocity_1
+                                                                                    << " state2: " << joint_velocity_2);
+      return false;
+    }
   }
 
-  Eigen::VectorXd joint_acc_1, joint_acc_2;
-
-  state1.copyJointGroupAccelerations(joint_group_name, joint_acc_1);
-  state2.copyJointGroupAccelerations(joint_group_name, joint_acc_2);
-
-  if ((joint_acc_1 - joint_acc_2).norm() > epsilon)
+  if (compare_acceleration)
   {
-    ROS_DEBUG_STREAM("Joint accelerations of the two states are different. state1: " << joint_acc_1
-                                                                                     << " state2: " << joint_acc_2);
-    return false;
+    Eigen::VectorXd joint_acc_1, joint_acc_2;
+
+    state1.copyJointGroupAccelerations(group_name, joint_acc_1);
+    state2.copyJointGroupAccelerations(group_name, joint_acc_2);
+
+    if ((joint_acc_1 - joint_acc_2).norm() > epsilon)
+    {
+      ROS_DEBUG_STREAM("Joint accelerations of the two states are different. state1: " << joint_acc_1
+                                                                                       << " state2: " << joint_acc_2);
+      return false;
+    }
   }
 
   return true;

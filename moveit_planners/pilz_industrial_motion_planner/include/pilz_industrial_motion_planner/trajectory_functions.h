@@ -152,8 +152,8 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              const std::map<std::string, double>& initial_joint_position,
                              const std::map<std::string, double>& initial_joint_velocity,
                              trajectory_msgs::JointTrajectory& joint_trajectory,
-                             moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
-                             bool check_self_collision = false);
+                             moveit_msgs::MoveItErrorCodes& error_code,
+                             bool check_self_collision = false, bool output_tcp_joints = false);
 
 /**
  * @brief Determines the sampling time and checks that both trajectories use the
@@ -179,7 +179,7 @@ bool determineAndCheckSamplingTime(const robot_trajectory::RobotTrajectoryPtr& f
  * equal, otherwise false.
  */
 bool isRobotStateEqual(const robot_state::RobotState& state1, const robot_state::RobotState& state2,
-                       const std::string& joint_group_name, double epsilon);
+                       const std::string& joint_group_name, double epsilon, bool compare_velocity = true, bool compare_acceleration = true);
 
 /**
  * @brief check if the robot state have zero velocity/acceleartion

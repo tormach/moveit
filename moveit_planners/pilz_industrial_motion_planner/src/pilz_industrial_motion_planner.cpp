@@ -72,6 +72,7 @@ bool CommandPlanner::initialize(const moveit::core::RobotModelConstPtr& model, c
   cartesian_limit_ = pilz_industrial_motion_planner::CartesianLimitsAggregator::getAggregatedLimits(
       ros::NodeHandle(PARAM_NAMESPACE_LIMTS));
 
+  // Obtain planning parameters
   planning_parameters_ = std::make_shared<pilz_industrial_motion_planner::PlanningParameters>(
       ros::NodeHandle(PARAM_PLANNING_PARAMETERS));
 

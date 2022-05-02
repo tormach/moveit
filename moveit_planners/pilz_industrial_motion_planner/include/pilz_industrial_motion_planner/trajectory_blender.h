@@ -40,6 +40,7 @@
 
 #include "pilz_industrial_motion_planner/trajectory_blend_request.h"
 #include "pilz_industrial_motion_planner/trajectory_blend_response.h"
+#include "planning_parameters.h"
 
 namespace pilz_industrial_motion_planner
 {
@@ -49,7 +50,9 @@ namespace pilz_industrial_motion_planner
 class TrajectoryBlender
 {
 public:
-  TrajectoryBlender(const pilz_industrial_motion_planner::LimitsContainer& planner_limits) : limits_(planner_limits)
+  TrajectoryBlender(const pilz_industrial_motion_planner::LimitsContainer& planner_limits,
+                    std::shared_ptr<pilz_industrial_motion_planner::PlanningParameters> planning_parameters)
+    : limits_(planner_limits), planning_parameters_(std::move(planning_parameters))
   {
   }
 
@@ -70,6 +73,8 @@ public:
 
 protected:
   const pilz_industrial_motion_planner::LimitsContainer limits_;
+  /// planning parameters read at runtime
+  std::shared_ptr<pilz_industrial_motion_planner::PlanningParameters> planning_parameters_;
 };
 
 typedef std::unique_ptr<TrajectoryBlender> TrajectoryBlenderUniquePtr;

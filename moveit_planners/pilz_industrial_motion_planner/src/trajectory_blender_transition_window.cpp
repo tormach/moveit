@@ -88,11 +88,16 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
   }
   trajectory_msgs::JointTrajectory blend_joint_trajectory;
   moveit_msgs::MoveItErrorCodes error_code;
-  std::pair<double, double> max_scaling_factors;
+  const bool output_tcp_joints = planning_parameters_->getOutputTcpJoints();
 
+  std::string group_name = req.group_name;
+  if (group_name.rfind("_tcp") != std::string::npos) {
+    group_name = group_name.substr(0, group_name.length() - 4);
+  }
   if (!generateJointTrajectory(planning_scene, limits_.getJointLimitContainer(), blend_trajectory_cartesian,
-                               req.group_name, req.link_name, initial_joint_position, initial_joint_velocity,
-                               blend_joint_trajectory, error_code, max_scaling_factors, true))
+                               group_name, req.link_name, initial_joint_position, initial_joint_velocity,
+                               blend_joint_trajectory, error_code, true,
+                               output_tcp_joints))
   {
     // LCOV_EXCL_START
     ROS_INFO("Failed to generate joint trajectory for blending trajectory.");
@@ -166,7 +171,7 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::validate
   // end position of the first trajectory and start position of second
   // trajectory must be the same
   if (!pilz_industrial_motion_planner::isRobotStateEqual(
-          req.first_trajectory->getLastWayPoint(), req.second_trajectory->getFirstWayPoint(), req.group_name, EPSILON))
+          req.first_trajectory->getLastWayPoint(), req.second_trajectory->getFirstWayPoint(), req.group_name, EPSILON, false, false))
   {
     ROS_ERROR_STREAM("During blending the last point of the preceding and the first point of the succeding trajectory");
     error_code.val = moveit_msgs::MoveItErrorCodes::INVALID_MOTION_PLAN;

@@ -54,9 +54,23 @@ std::vector<robot_trajectory::RobotTrajectoryPtr> PlanComponentsBuilder::build()
 void PlanComponentsBuilder::appendWithStrictTimeIncrease(robot_trajectory::RobotTrajectory& result,
                                                          const robot_trajectory::RobotTrajectory& source)
 {
+  // TODO, offset tcp positions
+  std::string group_name = result.getGroupName();
+  double tcp_lin_offset = 0.0;
+  double tcp_rot_offset = 0.0;
+  bool is_tcp_group = false;
+  if (group_name.rfind("_tcp") != std::string::npos) {
+    group_name = group_name.substr(0, group_name.size()-4);
+    is_tcp_group = true;
+    if (!result.empty())
+    {
+      tcp_lin_offset = *result.getLastWayPoint().getJointPositions("tcp_lin");
+      tcp_rot_offset = *result.getLastWayPoint().getJointPositions("tcp_rot");
+    }
+  }
   if (result.empty() ||
       !pilz_industrial_motion_planner::isRobotStateEqual(result.getLastWayPoint(), source.getFirstWayPoint(),
-                                                         result.getGroupName(), ROBOT_STATE_EQUALITY_EPSILON))
+                                                         group_name, ROBOT_STATE_EQUALITY_EPSILON))
   {
     result.append(source, 0.0);
     return;
@@ -64,7 +78,17 @@ void PlanComponentsBuilder::appendWithStrictTimeIncrease(robot_trajectory::Robot
 
   for (size_t i = 1; i < source.getWayPointCount(); ++i)
   {
+    if (is_tcp_group) {
+      moveit::core::RobotState new_waypoint = source.getWayPoint(i);
+      const double tcp_lin = new_waypoint.getVariablePosition("tcp_lin") + tcp_lin_offset;
+      const double tcp_rot = new_waypoint.getVariablePosition("tcp_rot") + tcp_rot_offset;
+      new_waypoint.setVariablePosition("tcp_lin", tcp_lin);
+      new_waypoint.setVariablePosition("tcp_rot", tcp_rot);
+      result.addSuffixWayPoint(new_waypoint, source.getWayPointDurationFromPrevious(i));
+    }
+    else {
     result.addSuffixWayPoint(source.getWayPoint(i), source.getWayPointDurationFromPrevious(i));
+    }
   }
 }
 
@@ -84,7 +108,11 @@ void PlanComponentsBuilder::blend(const planning_scene::PlanningSceneConstPtr& p
   blend_request.second_trajectory = other;
   blend_request.blend_radius = blend_radius;
   blend_request.group_name = traj_tail_->getGroupName();
-  blend_request.link_name = getSolverTipFrame(model_->getJointModelGroup(blend_request.group_name));
+  std::string group_name = blend_request.group_name;
+  if (group_name.rfind("_tcp") != std::string::npos) {
+    group_name = group_name.substr(0, group_name.length() - 4);
+  }
+  blend_request.link_name = getSolverTipFrame(model_->getJointModelGroup(group_name));
 
   pilz_industrial_motion_planner::TrajectoryBlendResponse blend_response;
   if (!blender_->blend(planning_scene, blend_request, blend_response))

@@ -46,6 +46,7 @@
 #include "pilz_industrial_motion_planner/plan_components_builder.h"
 #include "pilz_industrial_motion_planner/trajectory_blender.h"
 #include "pilz_industrial_motion_planner/trajectory_generation_exceptions.h"
+#include "pilz_industrial_motion_planner/planning_parameters.h"
 
 namespace pilz_industrial_motion_planner
 {
@@ -212,6 +213,9 @@ private:
   //! @brief Builder to construct the container containing the final
   //! trajectories.
   PlanComponentsBuilder plan_comp_builder_;
+
+  //! @brief Storing additional planning parameters.
+  std::shared_ptr<pilz_industrial_motion_planner::PlanningParameters> planning_parameters_;
 };
 
 inline void CommandListManager::checkLastBlendRadiusZero(const moveit_msgs::MotionSequenceRequest& req_list)

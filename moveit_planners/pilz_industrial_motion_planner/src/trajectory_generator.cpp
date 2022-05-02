@@ -257,8 +257,17 @@ void TrajectoryGenerator::setSuccessResponse(const moveit::core::RobotState& sta
                                              const ros::Time& planning_start,
                                              planning_interface::MotionPlanResponse& res) const
 {
+  // if we set group name here in the constructor
   robot_trajectory::RobotTrajectoryPtr rt(new robot_trajectory::RobotTrajectory(robot_model_));
+  // tcp_ joints will get filtered out here
   rt->setRobotTrajectoryMsg(start_state, joint_trajectory);
+  // setting it here prevents this problem
+  if (planning_parameters_->getOutputTcpJoints()) {
+    rt->setGroupName(group_name + "_tcp");
+  }
+  else {
+    rt->setGroupName(group_name);
+  }
 
   res.trajectory_ = rt;
   res.error_code_.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
