@@ -102,6 +102,9 @@ protected:
     ASSERT_TRUE(ph_.getParam(PARAM_PLANNING_GROUP_NAME, planning_group_));
     ASSERT_TRUE(ph_.getParam(PARAM_TARGET_LINK_NAME, target_link_));
 
+    error_details_ = std::make_shared<ErrorDetailsContainer>();
+    planning_parameters_ = std::make_shared<PlanningParameters>(ph_);
+
     testutils::checkRobotModel(robot_model_, planning_group_, target_link_);
 
     // create the limits container
@@ -120,7 +123,7 @@ protected:
 
     // create planner instance
     trajectory_generator_ =
-        std::unique_ptr<typename T::Type_>(new typename T::Type_(robot_model_, planner_limits, planning_group_));
+        std::unique_ptr<typename T::Type_>(new typename T::Type_(robot_model_, planner_limits, planning_group_, error_details_, planning_parameters_));
     ASSERT_NE(nullptr, trajectory_generator_) << "failed to create trajectory generator";
 
     // create a valid motion plan request with goal in joint space as basis for
@@ -156,6 +159,8 @@ protected:
   planning_interface::MotionPlanRequest req_;
   // test parameters from parameter server
   std::string planning_group_, target_link_;
+  std::shared_ptr<ErrorDetailsContainer> error_details_;
+  std::shared_ptr<PlanningParameters> planning_parameters_;
 };
 // Define the types we need to test
 TYPED_TEST_SUITE(TrajectoryGeneratorCommonTest, TrajectoryGeneratorCommonTestTypes);

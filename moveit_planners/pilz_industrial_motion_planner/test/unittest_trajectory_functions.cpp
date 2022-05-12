@@ -38,6 +38,7 @@
 #include <math.h>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include <Eigen/Geometry>
 #include <kdl/frames.hpp>
@@ -541,8 +542,9 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsWithS
 
   double duration_current = 10e-7;
 
+  std::pair<double, double> max_scaling_factors;
   EXPECT_FALSE(pilz_industrial_motion_planner::verifySampleJointLimits(position_last, velocity_last, position_current,
-                                                                       duration_last, duration_current, joint_limits));
+                                                                       duration_last, duration_current, joint_limits, max_scaling_factors));
 }
 
 /**
@@ -574,8 +576,9 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsVeloc
   test_joint_limits.has_velocity_limits = true;
   joint_limits.addLimit(test_joint_name, test_joint_limits);
 
+  std::pair<double, double> max_scaling_factors;
   EXPECT_FALSE(pilz_industrial_motion_planner::verifySampleJointLimits(position_last, velocity_last, position_current,
-                                                                       duration_last, duration_current, joint_limits));
+                                                                       duration_last, duration_current, joint_limits, max_scaling_factors));
 }
 
 /**
@@ -617,8 +620,9 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsAccel
 
   joint_limits.addLimit(test_joint_name, test_joint_limits);
 
+  std::pair<double, double> max_scaling_factors;
   EXPECT_FALSE(pilz_industrial_motion_planner::verifySampleJointLimits(position_last, velocity_last, position_current,
-                                                                       duration_last, duration_current, joint_limits));
+                                                                       duration_last, duration_current, joint_limits, max_scaling_factors));
 }
 
 /**
@@ -660,8 +664,9 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsDecel
 
   joint_limits.addLimit(test_joint_name, test_joint_limits);
 
+  std::pair<double, double> max_scaling_factors;
   EXPECT_FALSE(pilz_industrial_motion_planner::verifySampleJointLimits(position_last, velocity_last, position_current,
-                                                                       duration_last, duration_current, joint_limits));
+                                                                       duration_last, duration_current, joint_limits, max_scaling_factors));
 }
 
 /**
@@ -699,9 +704,10 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testGenerateJointTrajectoryWithI
   moveit_msgs::MoveItErrorCodes error_code;
   bool check_self_collision{ false };
 
+  std::pair<double, double> max_scaling_factors;
   EXPECT_FALSE(pilz_industrial_motion_planner::generateJointTrajectory(
       planning_scene_, joint_limits, kdl_trajectory, group_name, tcp_link_, initial_joint_position, sampling_time,
-      joint_trajectory, error_code, check_self_collision));
+      joint_trajectory, error_code, max_scaling_factors, check_self_collision));
 
   std::map<std::string, double> initial_joint_velocity;
 

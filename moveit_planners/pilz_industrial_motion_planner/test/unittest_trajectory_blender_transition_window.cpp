@@ -100,6 +100,8 @@ protected:
   double cartesian_velocity_tolerance_, cartesian_angular_velocity_tolerance_, joint_velocity_tolerance_,
       joint_acceleration_tolerance_, sampling_time_;
   LimitsContainer planner_limits_;
+  std::shared_ptr<ErrorDetailsContainer> error_details_;
+  std::shared_ptr<PlanningParameters> planning_parameters_;
 
   std::string test_data_file_name_;
   XmlTestDataLoaderUPtr data_loader_;
@@ -116,6 +118,9 @@ void TrajectoryBlenderTransitionWindowTest::SetUp()
   ASSERT_TRUE(ph_.getParam(JOINT_ACCELERATION_TOLERANCE, joint_acceleration_tolerance_));
   ASSERT_TRUE(ph_.getParam(SAMPLING_TIME, sampling_time_));
   ASSERT_TRUE(ph_.getParam(TEST_DATA_FILE_NAME, test_data_file_name_));
+
+  error_details_ = std::make_shared<ErrorDetailsContainer>();
+  planning_parameters_ = std::make_shared<PlanningParameters>(ph_);
 
   // load the test data provider
   data_loader_ = std::make_unique<XmlTestdataLoader>(test_data_file_name_, robot_model_);
@@ -137,9 +142,9 @@ void TrajectoryBlenderTransitionWindowTest::SetUp()
   planner_limits_.setCartesianLimits(cart_limits);
 
   // initialize trajectory generators and blender
-  lin_generator_ = std::make_unique<TrajectoryGeneratorLIN>(robot_model_, planner_limits_, planning_group_);
+  lin_generator_ = std::make_unique<TrajectoryGeneratorLIN>(robot_model_, planner_limits_, planning_group_, error_details_, planning_parameters_);
   ASSERT_NE(nullptr, lin_generator_) << "failed to create LIN trajectory generator";
-  blender_ = std::make_unique<TrajectoryBlenderTransitionWindow>(planner_limits_);
+  blender_ = std::make_unique<TrajectoryBlenderTransitionWindow>(planner_limits_, planning_parameters_);
   ASSERT_NE(nullptr, blender_) << "failed to create trajectory blender";
 }
 

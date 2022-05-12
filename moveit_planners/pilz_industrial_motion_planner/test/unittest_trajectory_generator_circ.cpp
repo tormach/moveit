@@ -102,6 +102,8 @@ protected:
   double cartesian_position_tolerance_, angular_acc_tolerance_, rot_axis_norm_tolerance_, acceleration_tolerance_,
       other_tolerance_;
   LimitsContainer planner_limits_;
+  std::shared_ptr<ErrorDetailsContainer> error_details_;
+  std::shared_ptr<PlanningParameters> planning_parameters_;
 };
 
 void TrajectoryGeneratorCIRCTest::SetUp()
@@ -115,6 +117,9 @@ void TrajectoryGeneratorCIRCTest::SetUp()
   ASSERT_TRUE(ph_.getParam(ROTATION_AXIS_NORM_TOLERANCE, rot_axis_norm_tolerance_));
   ASSERT_TRUE(ph_.getParam(ACCELERATION_TOLERANCE, acceleration_tolerance_));
   ASSERT_TRUE(ph_.getParam(OTHER_TOLERANCE, other_tolerance_));
+
+  error_details_ = std::make_shared<ErrorDetailsContainer>();
+  planning_parameters_ = std::make_shared<PlanningParameters>(ph_);
 
   // check robot model
   testutils::checkRobotModel(robot_model_, planning_group_, target_link_);
@@ -141,7 +146,7 @@ void TrajectoryGeneratorCIRCTest::SetUp()
   planner_limits_.setCartesianLimits(cart_limits);
 
   // initialize the LIN trajectory generator
-  circ_ = std::make_unique<TrajectoryGeneratorCIRC>(robot_model_, planner_limits_, planning_group_);
+  circ_ = std::make_unique<TrajectoryGeneratorCIRC>(robot_model_, planner_limits_, planning_group_, error_details_, planning_parameters_);
   ASSERT_NE(nullptr, circ_) << "failed to create CIRC trajectory generator";
 }
 
@@ -284,7 +289,7 @@ INSTANTIATE_TEST_SUITE_P(InstantiationName, TrajectoryGeneratorCIRCTest,
 TEST_P(TrajectoryGeneratorCIRCTest, noLimits)
 {
   LimitsContainer planner_limits;
-  EXPECT_THROW(TrajectoryGeneratorCIRC(this->robot_model_, planner_limits, planning_group_),
+  EXPECT_THROW(TrajectoryGeneratorCIRC(this->robot_model_, planner_limits, planning_group_, error_details_, planning_parameters_),
                TrajectoryGeneratorInvalidLimitsException);
 }
 

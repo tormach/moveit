@@ -104,6 +104,8 @@ protected:
   double joint_position_tolerance_, joint_velocity_tolerance_, pose_norm_tolerance_, rot_axis_norm_tolerance_,
       velocity_scaling_factor_, other_tolerance_;
   LimitsContainer planner_limits_;
+  std::shared_ptr<ErrorDetailsContainer> error_details_;
+  std::shared_ptr<PlanningParameters> planning_parameters_;
 };
 
 void TrajectoryGeneratorLINTest::SetUp()
@@ -119,6 +121,9 @@ void TrajectoryGeneratorLINTest::SetUp()
   ASSERT_TRUE(ph_.getParam(ROTATION_AXIS_NORM_TOLERANCE, rot_axis_norm_tolerance_));
   ASSERT_TRUE(ph_.getParam(VELOCITY_SCALING_FACTOR, velocity_scaling_factor_));
   ASSERT_TRUE(ph_.getParam(OTHER_TOLERANCE, other_tolerance_));
+
+  error_details_ = std::make_shared<ErrorDetailsContainer>();
+  planning_parameters_ = std::make_shared<PlanningParameters>(ph_);
 
   testutils::checkRobotModel(robot_model_, planning_group_, target_link_hcd_);
 
@@ -142,7 +147,7 @@ void TrajectoryGeneratorLINTest::SetUp()
   planner_limits_.setCartesianLimits(cart_limits);
 
   // initialize the LIN trajectory generator
-  lin_ = std::make_unique<TrajectoryGeneratorLIN>(robot_model_, planner_limits_, planning_group_);
+  lin_ = std::make_unique<TrajectoryGeneratorLIN>(robot_model_, planner_limits_, planning_group_, error_details_, planning_parameters_);
   ASSERT_NE(nullptr, lin_) << "Failed to create LIN trajectory generator.";
 }
 
@@ -394,7 +399,7 @@ TEST_P(TrajectoryGeneratorLINTest, CtorNoLimits)
 {
   pilz_industrial_motion_planner::LimitsContainer planner_limits;
 
-  EXPECT_THROW(pilz_industrial_motion_planner::TrajectoryGeneratorLIN(robot_model_, planner_limits, planning_group_),
+  EXPECT_THROW(pilz_industrial_motion_planner::TrajectoryGeneratorLIN(robot_model_, planner_limits, planning_group_, error_details_, planning_parameters_),
                pilz_industrial_motion_planner::TrajectoryGeneratorInvalidLimitsException);
 }
 
