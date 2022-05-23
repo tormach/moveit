@@ -52,6 +52,7 @@ namespace pilz_industrial_motion_planner
 {
 static const std::string PARAM_NAMESPACE_LIMITS = "robot_description_planning";
 static const std::string PARAM_PLANNING_PARAMETERS = "~/pilz_industrial_motion_planner";
+static constexpr double VELOCITY_TOLERANCE{ 1e-8 };
 
 CommandListManager::CommandListManager(const ros::NodeHandle& nh, const moveit::core::RobotModelConstPtr& model)
   : nh_(nh), model_(model)
@@ -259,6 +260,23 @@ CommandListManager::solveSequenceItems(const planning_scene::PlanningSceneConstP
     }
     motion_plan_responses.emplace_back(res);
     ROS_DEBUG_STREAM("Solved [" << ++curr_req_index << "/" << num_req << "]");
+
+    // check if trim is enabled and traj was trimmed -> need to abort
+    // this is basically the case when the velocity of our last waypoint is not zero
+    if (planning_parameters_->getTrimOnFailure()) {
+      const auto velocities = res.trajectory_->getLastWayPoint().getVariableVelocities();
+      const auto joint_names = res.trajectory_->getLastWayPoint().getVariableNames();
+      bool zero_velocity = true;
+      for (int i = 0; i < joint_names.size(); ++i) {
+        if (std::fabs(velocities[i]) > VELOCITY_TOLERANCE) {
+          zero_velocity = false;
+          break;
+        }
+      }
+      if (!zero_velocity) {
+        break; // trim on failure and last request was trimmed
+      }
+    }
   }
   return motion_plan_responses;
 }
