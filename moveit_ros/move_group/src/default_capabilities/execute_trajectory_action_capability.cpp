@@ -91,11 +91,13 @@ void MoveGroupExecuteTrajectoryAction::executePath(const moveit_msgs::ExecuteTra
 {
   ROS_INFO_NAMED(getName(), "Execution request received");
 
+  std::unique_lock<std::mutex> ulock(execute_cancel_mutex_);
   context_->trajectory_execution_manager_->clear();
   if (context_->trajectory_execution_manager_->push(goal->trajectory))
   {
     setExecuteTrajectoryState(MONITOR);
     context_->trajectory_execution_manager_->execute();
+    ulock.unlock(); // no we are safe to cancel
     moveit_controller_manager::ExecutionStatus status = context_->trajectory_execution_manager_->waitForExecution();
     if (status == moveit_controller_manager::ExecutionStatus::SUCCEEDED)
     {
@@ -123,6 +125,7 @@ void MoveGroupExecuteTrajectoryAction::executePath(const moveit_msgs::ExecuteTra
 
 void MoveGroupExecuteTrajectoryAction::preemptExecuteTrajectoryCallback()
 {
+  std::unique_lock<std::mutex> ulock(execute_cancel_mutex_);
   context_->trajectory_execution_manager_->stopExecution(true);
 }
 

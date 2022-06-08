@@ -62,6 +62,7 @@ private:
   void setExecuteTrajectoryState(MoveGroupState state);
 
   std::unique_ptr<actionlib::SimpleActionServer<moveit_msgs::ExecuteTrajectoryAction> > execute_action_server_;
+  std::mutex execute_cancel_mutex_;
 };
 
 }  // namespace move_group
