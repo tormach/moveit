@@ -1066,8 +1066,24 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
     return true;
   }
 
+  // Append a dummy joint as a workaround to https://github.com/ros-industrial-consortium/tesseract_planning/issues/27
+  std::list<Eigen::VectorXd> new_points;
+  double dummy = 1.0;
+  for (auto& point : points)
+  {
+    Eigen::VectorXd new_point(point.size() + 1);
+    new_point << point, dummy;
+    new_points.push_back(new_point);
+    dummy += 1.0;
+  }
+
+  Eigen::VectorXd max_velocity_dummy_appended(max_velocity.size() + 1);
+  max_velocity_dummy_appended << max_velocity, std::numeric_limits<double>::max();
+  Eigen::VectorXd max_acceleration_dummy_appended(max_acceleration.size() + 1);
+  max_acceleration_dummy_appended << max_acceleration, std::numeric_limits<double>::max();
+
   // Now actually call the algorithm
-  Trajectory parameterized(Path(points, path_tolerance_), max_velocity, max_acceleration, time_step_default_);
+  Trajectory parameterized(Path(points, path_tolerance_), max_velocity_dummy_appended, max_acceleration_dummy_appended, time_step_default_);
   if (!parameterized.isValid())
   {
     ROS_ERROR_NAMED(LOGNAME, "Unable to parameterize trajectory.");
@@ -1085,9 +1101,9 @@ bool TimeOptimalTrajectoryGeneration::computeTimeStamps(robot_trajectory::RobotT
   {
     // always sample the end of the trajectory as well
     double t = std::min(parameterized.getDuration(), sample * resample_dt_);
-    Eigen::VectorXd position = parameterized.getPosition(t);
-    Eigen::VectorXd velocity = parameterized.getVelocity(t);
-    Eigen::VectorXd acceleration = parameterized.getAcceleration(t);
+    Eigen::VectorXd position = parameterized.getPosition(t).topRows(num_joints);
+    Eigen::VectorXd velocity = parameterized.getVelocity(t).topRows(num_joints);
+    Eigen::VectorXd acceleration = parameterized.getAcceleration(t).topRows(num_joints);
 
     for (size_t j = 0; j < num_joints; ++j)
     {
