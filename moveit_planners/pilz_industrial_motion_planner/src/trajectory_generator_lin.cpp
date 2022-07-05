@@ -191,14 +191,18 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
 
     //  sample the Cartesian trajectory and compute joint trajectory using inverse
     //  kinematics
+    Eigen::Isometry3d pose_sample_last;
     if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
                                  plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
-                                 error_code,max_scaling_factors, false, output_tcp_joints, strict_limits, min_scaling_correction_factor))
+                                 error_code, max_scaling_factors, pose_sample_last, false, output_tcp_joints,
+                                 strict_limits, min_scaling_correction_factor))
     {
       if (trim_on_failure && !joint_trajectory.points.empty())
       {
-        succeeded = true;
-        break; // trimming active and at least one trajectory point
+        // trimming active and at least one trajectory point, need to resample
+        path = setPathLIN(plan_info.start_pose, pose_sample_last);
+        ROS_DEBUG_STREAM("Shortened trajectory");
+        //continue;
       }
       else if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
       {
@@ -215,11 +219,6 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
       {
         ROS_INFO_STREAM("Joint velocity or acceleration limit violated and below minimum scaling factor.");
         break; // would require scaling factor below threshold
-      }
-
-      if (output_tcp_joints) {
-        succeeded = true;
-        break; // velocity/acceleration violation, but outputting tcp joints, no need to scale
       }
 
       ROS_DEBUG_STREAM("updating scaling factors " <<

@@ -223,9 +223,10 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
 
     // sample the Cartesian trajectory and compute joint trajectory using inverse
     // kinematics
+    Eigen::Isometry3d pose_sample_last;
     if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
                                  plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
-                                 error_code, max_scaling_factors))
+                                 error_code, max_scaling_factors, pose_sample_last))
     {
       if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
       {

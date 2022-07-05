@@ -132,8 +132,8 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              const std::map<std::string, double>& initial_joint_position, const double& sampling_time,
                              trajectory_msgs::JointTrajectory& joint_trajectory,
                              moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
-                             bool check_self_collision = false, bool output_tcp_joints = false, bool strict_limits = true,
-                             double min_scaling_correction_factor = 0.01);
+                             Eigen::Isometry3d &pose_sample_last, bool check_self_collision = false, bool output_tcp_joints = false,
+                             bool strict_limits = true, double min_scaling_correction_factor = 0.01);
 
 /**
  * @brief Generate joint trajectory from a MultiDOFJointTrajectory

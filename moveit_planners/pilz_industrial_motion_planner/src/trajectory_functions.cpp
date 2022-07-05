@@ -214,8 +214,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const std::string& group_name, const std::string& link_name,
     const std::map<std::string, double>& initial_joint_position, const double& sampling_time,
     trajectory_msgs::JointTrajectory& joint_trajectory, moveit_msgs::MoveItErrorCodes& error_code,
-    std::pair<double, double>& max_scaling_factors, bool check_self_collision, bool output_tcp_joints,
-    bool strict_limits, double min_scaling_correction_factor)
+    std::pair<double, double>& max_scaling_factors, Eigen::Isometry3d &pose_sample_last, bool check_self_collision,
+    bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
   const auto old_max_scaling_factors = max_scaling_factors;
@@ -240,7 +240,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   {
     joint_velocity_last[item.first] = 0.0;
   }
-  joint_trajectory.points.clear();
+  joint_trajectory.points.clear(); // clear previous run
   // set joint names
   joint_trajectory.joint_names.clear();
   for (const auto& start_joint : initial_joint_position)
@@ -350,6 +350,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       point.accelerations.push_back(0.0);
       frame_sample_last = frame_sample;
     }
+    pose_sample_last = pose_sample;
 
     // update joint trajectory
     joint_trajectory.points.push_back(point);
@@ -384,7 +385,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   std::map<std::string, double> joint_velocity_last = initial_joint_velocity;
   double duration_last = 0;
   double duration_current = 0;
-  joint_trajectory.joint_names.clear();
+  joint_trajectory.joint_names.clear(); // clear previous run
   for (const auto& joint_position : ik_solution_last)
   {
     joint_trajectory.joint_names.push_back(joint_position.first);
@@ -409,7 +410,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       ROS_WARN("Failed to compute inverse kinematics solution for sampled "
                 "Cartesian pose.");
       error_code.val = moveit_msgs::MoveItErrorCodes::NO_IK_SOLUTION;
-      joint_trajectory.points.clear();
       return false;
     }
 
@@ -437,7 +437,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
                                                              << "th sample violates the joint "
                                                                 "velocity/acceleration/deceleration limits.");
       error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
-      joint_trajectory.points.clear();
       return false;
       // LCOV_EXCL_STOP
     }
@@ -466,6 +465,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       }
       waypoint_joint.positions.push_back(tcp_pos);  // tcp_lin
       waypoint_joint.positions.push_back(tcp_rot);  // tcp_rot
+      // velocities and accelerations need to be filled,
+      // zero works, but could be calculated for later use
       waypoint_joint.velocities.push_back(0.0);
       waypoint_joint.velocities.push_back(0.0);
       waypoint_joint.accelerations.push_back(0.0);
