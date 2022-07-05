@@ -121,56 +121,62 @@ void TrajectoryGeneratorPTP::planPTP(const std::map<std::string, double>& start_
     return;
   }
 
-  // compute the fastest trajectory and choose the slowest joint as leading axis
-  std::string leading_axis = joint_trajectory.joint_names.front();
-  double max_duration = -1.0;
-
+  // compute the fastest trajectory and choose the slowest accel, const and decel segments for the leading axis
+  double max_duration;
   std::map<std::string, VelocityProfileATrap> velocity_profile;
+  double max_acc_time = 0.0;
+  double max_const_time = 0.0;
+  double max_dec_time = 0.0;
   for (const auto& joint_name : joint_trajectory.joint_names)
   {
-    // create vecocity profile if necessary
+    // create velocity profile if necessary
     velocity_profile.insert(std::make_pair(
-        joint_name, VelocityProfileATrap(velocity_scaling_factor * most_strict_limit_.max_velocity,
-                                         acceleration_scaling_factor * most_strict_limit_.max_acceleration,
-                                         acceleration_scaling_factor * most_strict_limit_.max_deceleration)));
+        joint_name, VelocityProfileATrap(velocity_scaling_factor * joint_limits_.getLimit(joint_name).max_velocity,
+                                         acceleration_scaling_factor * joint_limits_.getLimit(joint_name).max_acceleration,
+                                         acceleration_scaling_factor * joint_limits_.getLimit(joint_name).max_deceleration)));
 
     velocity_profile.at(joint_name).SetProfile(start_pos.at(joint_name), goal_pos.at(joint_name));
-    if (velocity_profile.at(joint_name).Duration() > max_duration)
-    {
-      max_duration = velocity_profile.at(joint_name).Duration();
-      leading_axis = joint_name;
+    if (velocity_profile.at(joint_name).firstPhaseDuration() > max_acc_time) {
+      max_acc_time = velocity_profile.at(joint_name).firstPhaseDuration();
+    }
+    if (velocity_profile.at(joint_name).secondPhaseDuration() > max_const_time) {
+      max_const_time = velocity_profile.at(joint_name).secondPhaseDuration();
+    }
+    if (velocity_profile.at(joint_name).thirdPhaseDuration() > max_dec_time) {
+      max_dec_time = velocity_profile.at(joint_name).thirdPhaseDuration();
     }
   }
+  max_duration = max_acc_time + max_const_time + max_dec_time;
 
   // Full Synchronization
   // This should only work if all axes have same max_vel, max_acc, max_dec
   // values
   // reset the velocity profile for other joints
-  double acc_time = velocity_profile.at(leading_axis).firstPhaseDuration();
-  double const_time = velocity_profile.at(leading_axis).secondPhaseDuration();
-  double dec_time = velocity_profile.at(leading_axis).thirdPhaseDuration();
+  //double acc_time = velocity_profile.at(leading_axis).firstPhaseDuration();
+  //double const_time = velocity_profile.at(leading_axis).secondPhaseDuration();
+  //double dec_time = velocity_profile.at(leading_axis).thirdPhaseDuration();
 
   for (const auto& joint_name : joint_trajectory.joint_names)
   {
-    if (joint_name != leading_axis)
-    {
+    //if (joint_name != leading_axis)
+    //{
       // make full synchronization
       // causes the program to terminate if acc_time<=0 or dec_time<=0 (should
       // be prevented by goal_reached block above)
       // by using the most strict limit, the following should always return true
       if (!velocity_profile.at(joint_name)
-               .setProfileAllDurations(start_pos.at(joint_name), goal_pos.at(joint_name), acc_time, const_time,
-                                       dec_time))
+               .setProfileAllDurations(start_pos.at(joint_name), goal_pos.at(joint_name), max_acc_time, max_const_time,
+                                       max_dec_time))
       // LCOV_EXCL_START
       {
         std::stringstream error_str;
         error_str << "TrajectoryGeneratorPTP::planPTP(): Can not synchronize "
                      "velocity profile of axis "
-                  << joint_name << " with leading axis " << leading_axis;
+                  << joint_name;
         throw PtpVelocityProfileSyncFailed(error_str.str());
       }
       // LCOV_EXCL_STOP
-    }
+    //}
   }
 
   // first generate the time samples
