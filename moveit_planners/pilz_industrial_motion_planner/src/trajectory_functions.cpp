@@ -240,6 +240,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   {
     joint_velocity_last[item.first] = 0.0;
   }
+  joint_trajectory.points.clear();
   // set joint names
   joint_trajectory.joint_names.clear();
   for (const auto& start_joint : initial_joint_position)
