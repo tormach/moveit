@@ -175,6 +175,8 @@ private:
                                 const std::size_t blend_align_index, double sampling_time,
                                 pilz_industrial_motion_planner::CartesianTrajectory& trajectory) const;
 
+  void scaleTrajectoryCartesian(pilz_industrial_motion_planner::CartesianTrajectory& trajectory, double scale_factor) const;
+
 private:  // static members
   // Constant to check for equality of values.
   static constexpr double EPSILON = 1e-4;

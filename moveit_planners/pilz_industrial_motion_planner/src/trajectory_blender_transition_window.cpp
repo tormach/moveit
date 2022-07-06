@@ -89,21 +89,62 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
   trajectory_msgs::JointTrajectory blend_joint_trajectory;
   moveit_msgs::MoveItErrorCodes error_code;
   const bool output_tcp_joints = planning_parameters_->getOutputTcpJoints();
+  const bool strict_limits = planning_parameters_->getStrictLimits();
+  const double min_scaling_correction_factor = planning_parameters_->getMinScalingCorrectionFactor();
+  bool succeeded = false;
+  bool scaling_factor_corrected = false;
+  double total_scaling_factor = 1.0;
 
   std::string group_name = req.group_name;
   if (group_name.rfind("_tcp") != std::string::npos) {
     group_name = group_name.substr(0, group_name.length() - 4);
   }
-  if (!generateJointTrajectory(planning_scene, limits_.getJointLimitContainer(), blend_trajectory_cartesian,
-                               group_name, req.link_name, initial_joint_position, initial_joint_velocity,
-                               blend_joint_trajectory, error_code, true,
-                               output_tcp_joints))
+  while (!succeeded)
   {
-    // LCOV_EXCL_START
+    std::pair<double, double> max_scaling_factors;
+    max_scaling_factors.first = 1.0;
+    max_scaling_factors.second = 1.0;
+    if (!generateJointTrajectory(planning_scene, limits_.getJointLimitContainer(), blend_trajectory_cartesian,
+                                 group_name, req.link_name, initial_joint_position, initial_joint_velocity,
+                                 blend_joint_trajectory, error_code, max_scaling_factors, true, output_tcp_joints,
+                                 strict_limits, min_scaling_correction_factor))
+    {
+      // LCOV_EXCL_START
+      if (res.error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
+      {
+        break; // error not related to limit violation
+      }
+      else if (strict_limits) {
+        break; // planning failed due to joint velocity/acceleration violation
+      }
+
+      const double scaling_factor = std::fmin(max_scaling_factors.first, max_scaling_factors.second);
+      total_scaling_factor *= scaling_factor;
+      if (total_scaling_factor < min_scaling_correction_factor)
+      {
+        ROS_INFO_STREAM("Joint velocity or acceleration limit violated and below minimum scaling factor.");
+        break; // would require scaling factor below threshold
+      }
+
+      ROS_DEBUG_STREAM("updating scaling factor " << total_scaling_factor);
+      // limit violation, space out cartesian trajectory points
+      scaleTrajectoryCartesian(blend_trajectory_cartesian, scaling_factor);
+      scaling_factor_corrected = true;
+      continue;
+      // LCOV_EXCL_STOP
+    }
+    succeeded = true;
+  }
+
+  if (!succeeded) {
     ROS_INFO("Failed to generate joint trajectory for blending trajectory.");
     res.error_code.val = error_code.val;
     return false;
-    // LCOV_EXCL_STOP
+  }
+
+  if (scaling_factor_corrected) {
+    ROS_INFO_STREAM("Joint velocity or acceleration limit violated during blending. \nScaling factor has been corrected to: " <<
+                    total_scaling_factor);
   }
 
   res.first_trajectory = std::make_shared<robot_trajectory::RobotTrajectory>(req.first_trajectory->getRobotModel(),
@@ -258,6 +299,13 @@ void pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blendTra
     waypoint.pose = tf2::toMsg(blend_sample_pose);
     waypoint.time_from_start = ros::Duration((i + 1.0) * sampling_time);
     trajectory.points.push_back(waypoint);
+  }
+}
+
+void pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::scaleTrajectoryCartesian(pilz_industrial_motion_planner::CartesianTrajectory& trajectory, double scale_factor) const
+{
+  for (auto &point: trajectory.points) {
+    point.time_from_start *= scale_factor;
   }
 }
 

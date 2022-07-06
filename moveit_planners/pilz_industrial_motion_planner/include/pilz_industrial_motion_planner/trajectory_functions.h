@@ -152,8 +152,9 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              const std::map<std::string, double>& initial_joint_position,
                              const std::map<std::string, double>& initial_joint_velocity,
                              trajectory_msgs::JointTrajectory& joint_trajectory,
-                             moveit_msgs::MoveItErrorCodes& error_code,
-                             bool check_self_collision = false, bool output_tcp_joints = false);
+                             moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
+                             bool check_self_collision = false, bool output_tcp_joints = false,
+                             bool strict_limits = true, double min_scaling_correction_factor = 0.01);
 
 /**
  * @brief Determines the sampling time and checks that both trajectories use the
