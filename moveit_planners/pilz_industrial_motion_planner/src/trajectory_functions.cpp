@@ -261,6 +261,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   KDL::RotationalInterpolation_SingleAxis rot_interpolation;
   double tcp_pos = 0.0;
   double tcp_rot = 0.0;
+  double tcp_lin_vel_last = 0.0;
+  double tcp_rot_vel_last = 0.0;
   for (std::vector<double>::const_iterator time_iter = time_samples.begin(); time_iter != time_samples.end();
        ++time_iter)
   {
@@ -335,19 +337,41 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
 
     if (output_tcp_joints)
     {
+      double tcp_lin_vel = 0.0;
+      double tcp_rot_vel = 0.0;
       if (time_iter != time_samples.begin())
       {
         KDL::Frame diff = frame_sample * frame_sample_last.Inverse();
-        tcp_pos += diff.p.Norm();
+        double lin_distance = diff.p.Norm();
+        tcp_pos += lin_distance;
+        tcp_lin_vel = lin_distance / duration_current_sample;
         rot_interpolation.SetStartEnd(frame_sample_last.M, frame_sample.M);
-        tcp_rot += rot_interpolation.Angle();
+        double rot_distance = rot_interpolation.Angle();
+        tcp_rot += rot_distance;
+        tcp_rot_vel = rot_distance / duration_current_sample;
       }
       point.positions.push_back(tcp_pos);  // tcp_lin
       point.positions.push_back(tcp_rot);  // tcp_rot
-      point.velocities.push_back(0.0);
-      point.velocities.push_back(0.0);
-      point.accelerations.push_back(0.0);
-      point.accelerations.push_back(0.0);
+      if (time_iter != time_samples.begin() && time_iter != time_samples.end() - 1)
+      {
+        point.velocities.push_back(tcp_lin_vel);
+        point.velocities.push_back(tcp_rot_vel);
+        point.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) / (duration_current_sample + sampling_time) *
+                                      2.0);
+        point.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) / (duration_current_sample + sampling_time) *
+                                      2.0);
+        tcp_lin_vel_last = tcp_lin_vel;
+        tcp_rot_vel_last = tcp_rot_vel;
+      }
+      else {
+        point.velocities.push_back(0.0);
+        point.velocities.push_back(0.0);
+        point.accelerations.push_back(0.0);
+        point.accelerations.push_back(0.0);
+        tcp_lin_vel_last = 0.0;
+        tcp_rot_vel_last = 0.0;
+      }
+
       frame_sample_last = frame_sample;
     }
     pose_sample_last = pose_sample;
@@ -399,6 +423,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   KDL::RotationalInterpolation_SingleAxis rot_interpolation;
   double tcp_pos = 0.0;
   double tcp_rot = 0.0;
+  double tcp_lin_vel_last = 0.0;
+  double tcp_rot_vel_last = 0.0;
   for (size_t i = 0; i < trajectory.points.size(); ++i)
   {
     KDL::Frame frame_sample;
@@ -457,20 +483,26 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
 
     if (output_tcp_joints)
     {
+      double tcp_lin_vel = 0.0;
+      double tcp_rot_vel = 0.0;
       if (i > 0) {
         KDL::Frame diff = frame_sample * frame_sample_last.Inverse();
-        tcp_pos += diff.p.Norm();
+        double lin_distance = diff.p.Norm();
+        tcp_pos += lin_distance;
+        tcp_lin_vel = lin_distance / duration_current;
         rot_interpolation.SetStartEnd(frame_sample_last.M, frame_sample.M);
-        tcp_rot += rot_interpolation.Angle();
+        double rot_distance = rot_interpolation.Angle();
+        tcp_rot += rot_distance;
+        tcp_rot_vel = rot_distance / duration_current;
       }
       waypoint_joint.positions.push_back(tcp_pos);  // tcp_lin
       waypoint_joint.positions.push_back(tcp_rot);  // tcp_rot
-      // velocities and accelerations need to be filled,
-      // zero works, but could be calculated for later use
-      waypoint_joint.velocities.push_back(0.0);
-      waypoint_joint.velocities.push_back(0.0);
-      waypoint_joint.accelerations.push_back(0.0);
-      waypoint_joint.accelerations.push_back(0.0);
+      waypoint_joint.velocities.push_back(tcp_lin_vel);
+      waypoint_joint.velocities.push_back(tcp_rot_vel);
+      waypoint_joint.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) / (duration_current + duration_last) * 2.0);
+      waypoint_joint.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) / (duration_current + duration_last) * 2.0);
+      tcp_lin_vel_last = tcp_lin_vel;
+      tcp_rot_vel_last = tcp_rot_vel;
       frame_sample_last = frame_sample;
     }
 
