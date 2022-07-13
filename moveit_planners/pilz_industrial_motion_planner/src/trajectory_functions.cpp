@@ -42,6 +42,8 @@
 #include <kdl/rotational_interpolation.hpp>
 #include <kdl/rotational_interpolation_sa.hpp>
 
+#include "pilz_industrial_motion_planner/velocity_profile.h"
+
 bool pilz_industrial_motion_planner::computePoseIK(const planning_scene::PlanningSceneConstPtr& scene,
                                                    const std::string& group_name, const std::string& link_name,
                                                    const Eigen::Isometry3d& pose, const std::string& frame_id,
@@ -210,7 +212,7 @@ bool pilz_industrial_motion_planner::verifySampleJointLimits(
 
 bool pilz_industrial_motion_planner::generateJointTrajectory(
     const planning_scene::PlanningSceneConstPtr& scene,
-    const pilz_industrial_motion_planner::JointLimitsContainer& joint_limits, const KDL::Trajectory& trajectory,
+    const pilz_industrial_motion_planner::JointLimitsContainer& joint_limits, const pilz_industrial_motion_planner::Trajectory_Segment& trajectory,
     const std::string& group_name, const std::string& link_name,
     const std::map<std::string, double>& initial_joint_position, const double& sampling_time,
     trajectory_msgs::JointTrajectory& joint_trajectory, moveit_msgs::MoveItErrorCodes& error_code,
@@ -226,9 +228,29 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   // generate the time samples
   const double epsilon = 10e-06;  // avoid adding the last time sample twice
   std::vector<double> time_samples;
+  const double t_first_transition = trajectory.getVelocityProfile()->firstPhaseDuration();
+  const double t_second_transition = t_first_transition + trajectory.getVelocityProfile()->secondPhaseDuration();
+  bool first_transition_added = false;
+  bool second_transition_added = false;
   for (double t_sample = 0.0; t_sample < trajectory.Duration() - epsilon; t_sample += sampling_time)
   {
+    if (!first_transition_added && (t_sample > t_first_transition)) {
+      if (time_samples.empty() ||
+          (((t_first_transition - time_samples.back()) > epsilon) && ((t_sample - t_first_transition) > epsilon))) {
+        time_samples.push_back(t_first_transition);
+      }
+      first_transition_added = true;
+    }
+    if (!second_transition_added && (t_sample > t_second_transition)) {
+      if (((t_second_transition - time_samples.back()) > epsilon) && ((t_sample - t_second_transition) > epsilon)) {
+        time_samples.push_back(t_second_transition);
+      }
+      second_transition_added = true;
+    }
     time_samples.push_back(t_sample);
+  }
+  if (!second_transition_added) {
+    time_samples.push_back(t_second_transition);
   }
   time_samples.push_back(trajectory.Duration());
 
@@ -263,6 +285,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   double tcp_rot = 0.0;
   double tcp_lin_vel_last = 0.0;
   double tcp_rot_vel_last = 0.0;
+  double duration_last_sample = 0.0;
   for (std::vector<double>::const_iterator time_iter = time_samples.begin(); time_iter != time_samples.end();
        ++time_iter)
   {
@@ -279,21 +302,22 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     }
 
     // check the joint limits
-    double duration_current_sample = sampling_time;
-    // last interval can be shorter than the sampling time
-    if (time_iter == (time_samples.end() - 1) && time_samples.size() > 1)
+    double duration_current_sample;
+    if (time_iter != time_samples.begin())
     {
       duration_current_sample = *time_iter - *(time_iter - 1);
     }
-    if (time_samples.size() == 1)
-    {
+    else {
       duration_current_sample = *time_iter;
+    }
+    if (time_iter == time_samples.begin()) {
+      duration_last_sample = duration_current_sample;
     }
 
     // skip the first sample with zero time from start for limits checking
     std::pair<double, double> tmp_max_scaling_factors;
     if (time_iter != time_samples.begin() &&
-        !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, sampling_time,
+        !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, duration_last_sample,
                                  duration_current_sample, joint_limits, tmp_max_scaling_factors))
     {
       ROS_DEBUG_STREAM("Inverse kinematics solution at "
@@ -320,11 +344,10 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
 
       if (time_iter != time_samples.begin() && time_iter != time_samples.end() - 1)
       {
-        double joint_velocity =
-            (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current_sample;
+        double joint_velocity = (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current_sample;
         point.velocities.push_back(joint_velocity);
         point.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
-                                      (duration_current_sample + sampling_time) * 2.0);
+                                      (duration_current_sample + duration_last_sample) * 2.0);
         joint_velocity_last[joint_name] = joint_velocity;
       }
       else
@@ -356,10 +379,10 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       {
         point.velocities.push_back(tcp_lin_vel);
         point.velocities.push_back(tcp_rot_vel);
-        point.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) / (duration_current_sample + sampling_time) *
-                                      2.0);
-        point.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) / (duration_current_sample + sampling_time) *
-                                      2.0);
+        point.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) /
+                                      (duration_current_sample + duration_last_sample) * 2.0);
+        point.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) /
+                                      (duration_current_sample + duration_last_sample) * 2.0);
         tcp_lin_vel_last = tcp_lin_vel;
         tcp_rot_vel_last = tcp_rot_vel;
       }
@@ -379,6 +402,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     // update joint trajectory
     joint_trajectory.points.push_back(point);
     ik_solution_last = ik_solution;
+    duration_last_sample = duration_current_sample;
   }
 
   if (success)

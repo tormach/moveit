@@ -212,14 +212,14 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
   while (!succeeded)
   {
     // create velocity profile
-    std::unique_ptr<KDL::VelocityProfile> vel_profile(
+    std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vel_profile(
         cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, cart_path));
 
     // combine path and velocity profile into Cartesian trajectory
     // with the third parameter set to false, KDL::Trajectory_Segment does not
     // take
     // the ownership of Path and Velocity Profile
-    KDL::Trajectory_Segment cart_trajectory(cart_path.get(), vel_profile.get(), false);
+    pilz_industrial_motion_planner::Trajectory_Segment cart_trajectory(cart_path.get(), vel_profile.get(), false);
 
     // sample the Cartesian trajectory and compute joint trajectory using inverse
     // kinematics

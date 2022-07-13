@@ -38,10 +38,10 @@
 
 #include <boost/range/combine.hpp>
 
-#include <kdl/velocityprofile_trap.hpp>
 #include <moveit/robot_state/conversions.h>
 
 #include "pilz_industrial_motion_planner/limits_container.h"
+#include "pilz_industrial_motion_planner/velocity_profile_atrap.h"
 
 namespace pilz_industrial_motion_planner
 {
@@ -284,14 +284,16 @@ void TrajectoryGenerator::setFailureResponse(const ros::Time& planning_start,
   res.planning_time_ = (ros::Time::now() - planning_start).toSec();
 }
 
-std::unique_ptr<KDL::VelocityProfile>
+std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile>
 TrajectoryGenerator::cartesianTrapVelocityProfile(const double& max_velocity_scaling_factor,
                                                   const double& max_acceleration_scaling_factor,
                                                   const std::unique_ptr<KDL::Path>& path) const
 {
-  std::unique_ptr<KDL::VelocityProfile> vp_trans(new KDL::VelocityProfile_Trap(
+  std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vp_trans(new pilz_industrial_motion_planner::VelocityProfileATrap(
       max_velocity_scaling_factor * planner_limits_.getCartesianLimits().getMaxTranslationalVelocity(),
-      max_acceleration_scaling_factor * planner_limits_.getCartesianLimits().getMaxTranslationalAcceleration()));
+      max_acceleration_scaling_factor * planner_limits_.getCartesianLimits().getMaxTranslationalAcceleration(),
+      max_acceleration_scaling_factor * planner_limits_.getCartesianLimits().getMaxTranslationalAcceleration()
+      ));
 
   if (path->PathLength() > std::numeric_limits<double>::epsilon())  // avoid division by zero
   {

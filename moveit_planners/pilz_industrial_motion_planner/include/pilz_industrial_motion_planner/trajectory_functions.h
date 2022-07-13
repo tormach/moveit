@@ -45,6 +45,7 @@
 
 #include "pilz_industrial_motion_planner/cartesian_trajectory.h"
 #include "pilz_industrial_motion_planner/limits_container.h"
+#include "pilz_industrial_motion_planner/trajectory_segment.hpp"
 
 namespace pilz_industrial_motion_planner
 {
@@ -127,7 +128,7 @@ bool verifySampleJointLimits(const std::map<std::string, double>& position_last,
  * @return true if succeed
  */
 bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
-                             const JointLimitsContainer& joint_limits, const KDL::Trajectory& trajectory,
+                             const JointLimitsContainer& joint_limits, const Trajectory_Segment& trajectory,
                              const std::string& group_name, const std::string& link_name,
                              const std::map<std::string, double>& initial_joint_position, const double& sampling_time,
                              trajectory_msgs::JointTrajectory& joint_trajectory,

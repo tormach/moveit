@@ -42,13 +42,14 @@
 #include <moveit/robot_state/conversions.h>
 
 #include <kdl/path_line.hpp>
-#include <kdl/trajectory_segment.hpp>
 #include <utility>
 #include <kdl/utilities/error.h>
 
 #include <tf2_kdl/tf2_kdl.h>
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
+#include "pilz_industrial_motion_planner/trajectory_segment.hpp"
 
 namespace pilz_industrial_motion_planner
 {
@@ -180,14 +181,14 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
   while (!succeeded)
   {
     // create velocity profile
-    std::unique_ptr<KDL::VelocityProfile> vp(
+    std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vp(
         cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, path));
 
     // combine path and velocity profile into Cartesian trajectory
     // with the third parameter set to false, KDL::Trajectory_Segment does not
     // take
     // the ownership of Path and Velocity Profile
-    KDL::Trajectory_Segment cart_trajectory(path.get(), vp.get(), false);
+    pilz_industrial_motion_planner::Trajectory_Segment cart_trajectory(path.get(), vp.get(), false);
 
     //  sample the Cartesian trajectory and compute joint trajectory using inverse
     //  kinematics

@@ -34,7 +34,7 @@
 
 #pragma once
 
-#include "kdl/velocityprofile.hpp"
+#include "pilz_industrial_motion_planner/velocity_profile.h"
 #include <iostream>
 
 namespace pilz_industrial_motion_planner
@@ -48,7 +48,7 @@ namespace pilz_industrial_motion_planner
  *   - Function to generate trapezoid shaped velocity profile with start
  * velocity.
  */
-class VelocityProfileATrap : public KDL::VelocityProfile
+class VelocityProfileATrap : public pilz_industrial_motion_planner::VelocityProfile
 {
 public:
   /**
