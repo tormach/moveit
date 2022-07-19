@@ -117,7 +117,7 @@ public:
    * @brief get the time of first phase
    * @return
    */
-  double firstPhaseDuration() const
+  double firstPhaseDuration() const override
   {
     return t_a_;
   }
@@ -125,7 +125,7 @@ public:
    * @brief get the time of second phase
    * @return
    */
-  double secondPhaseDuration() const
+  double secondPhaseDuration() const override
   {
     return t_b_;
   }
@@ -133,9 +133,24 @@ public:
    * @brief get the time of third phase
    * @return
    */
-  double thirdPhaseDuration() const
+  double thirdPhaseDuration() const override
   {
     return t_c_;
+  }
+
+  double maxVelocity() const override
+  {
+    return max_vel_;
+  }
+
+  double maxAcceleration() const override
+  {
+    return max_acc_;
+  }
+
+  double maxDeceleration() const override
+  {
+    return max_dec_;
   }
 
   /**

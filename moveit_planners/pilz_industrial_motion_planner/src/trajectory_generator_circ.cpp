@@ -208,12 +208,16 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
   bool succeeded = false;
 
   const double sampling_time = planning_parameters_->getSamplingTime();
+  const double sampling_distance = planning_parameters_->getSamplingDistance();
 
   while (!succeeded)
   {
     // create velocity profile
     std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vel_profile(
         cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, cart_path));
+
+    // calculate sampling_time at constant velocity
+    const double const_sampling_time = sampling_distance / vel_profile->maxVelocity();;
 
     // combine path and velocity profile into Cartesian trajectory
     // with the third parameter set to false, KDL::Trajectory_Segment does not
@@ -225,8 +229,8 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
     // kinematics
     Eigen::Isometry3d pose_sample_last;
     if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
-                                 plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
-                                 error_code, max_scaling_factors, pose_sample_last))
+                                 plan_info.link_name, plan_info.start_joint_position, sampling_time, sampling_distance,
+                                 joint_trajectory, error_code, max_scaling_factors, pose_sample_last))
     {
       if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
       {

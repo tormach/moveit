@@ -68,6 +68,11 @@ public:
    */
   virtual double thirdPhaseDuration() const = 0;
 
+  virtual double maxVelocity() const = 0;
+
+  virtual double maxAcceleration() const = 0;
+
+  virtual double maxDeceleration() const = 0;
 };
 
 }  // namespace pilz_industrial_motion_planner

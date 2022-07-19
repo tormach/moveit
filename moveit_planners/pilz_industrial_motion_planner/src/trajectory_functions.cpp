@@ -214,7 +214,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const planning_scene::PlanningSceneConstPtr& scene,
     const pilz_industrial_motion_planner::JointLimitsContainer& joint_limits, const pilz_industrial_motion_planner::Trajectory_Segment& trajectory,
     const std::string& group_name, const std::string& link_name,
-    const std::map<std::string, double>& initial_joint_position, const double& sampling_time,
+    const std::map<std::string, double>& initial_joint_position, const double& sampling_time, const double& const_sampling_time,
     trajectory_msgs::JointTrajectory& joint_trajectory, moveit_msgs::MoveItErrorCodes& error_code,
     std::pair<double, double>& max_scaling_factors, Eigen::Isometry3d &pose_sample_last, bool check_self_collision,
     bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor)
@@ -228,29 +228,21 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   // generate the time samples
   const double epsilon = 10e-06;  // avoid adding the last time sample twice
   std::vector<double> time_samples;
-  const double t_first_transition = trajectory.getVelocityProfile()->firstPhaseDuration();
-  const double t_second_transition = t_first_transition + trajectory.getVelocityProfile()->secondPhaseDuration();
-  bool first_transition_added = false;
-  bool second_transition_added = false;
-  for (double t_sample = 0.0; t_sample < trajectory.Duration() - epsilon; t_sample += sampling_time)
+  double t_first_transition = trajectory.getVelocityProfile()->firstPhaseDuration();
+  double t_second_transition = t_first_transition + trajectory.getVelocityProfile()->secondPhaseDuration();
+  t_first_transition = std::min(t_first_transition + sampling_time, t_second_transition);
+  t_second_transition = std::max(t_second_transition - sampling_time, t_first_transition);
+  for (double t_sample = 0.0; t_sample < t_first_transition - epsilon; t_sample += sampling_time)
   {
-    if (!first_transition_added && (t_sample > t_first_transition)) {
-      if (time_samples.empty() ||
-          (((t_first_transition - time_samples.back()) > epsilon) && ((t_sample - t_first_transition) > epsilon))) {
-        time_samples.push_back(t_first_transition);
-      }
-      first_transition_added = true;
-    }
-    if (!second_transition_added && (t_sample > t_second_transition)) {
-      if (((t_second_transition - time_samples.back()) > epsilon) && ((t_sample - t_second_transition) > epsilon)) {
-        time_samples.push_back(t_second_transition);
-      }
-      second_transition_added = true;
-    }
     time_samples.push_back(t_sample);
   }
-  if (!second_transition_added) {
-    time_samples.push_back(t_second_transition);
+  for (double t_sample = t_first_transition; t_sample < t_second_transition - epsilon; t_sample += const_sampling_time)
+  {
+    time_samples.push_back(t_sample);
+  }
+  for (double t_sample = t_second_transition; t_sample < trajectory.Duration() - epsilon; t_sample += sampling_time)
+  {
+    time_samples.push_back(t_sample);
   }
   time_samples.push_back(trajectory.Duration());
 

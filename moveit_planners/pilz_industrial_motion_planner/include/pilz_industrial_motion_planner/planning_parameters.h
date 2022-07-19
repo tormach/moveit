@@ -15,6 +15,7 @@ public:
   PlanningParameters(const ros::NodeHandle& nh);
 
   double getSamplingTime() const;
+  double getSamplingDistance() const;
   bool getOutputTcpJoints() const;
   bool getTrimOnFailure() const;
   bool getStrictLimits() const;

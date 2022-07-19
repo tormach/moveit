@@ -6,6 +6,7 @@
 static const std::string PARAMS_PLANNING_PARAMS_NS = "planning_parameters";
 
 static const std::string PARAMS_SAMPLING_TIME = "sampling_time";
+static const std::string PARAMS_SAMPLING_DISTANCE = "sampling_distance";
 static const std::string PARAMS_OUTPUT_TCP_JOINTS = "output_tcp_joints";
 static const std::string PARAMS_TRIM_ON_FAILURE = "trim_on_failure";
 static const std::string PARAMS_STRICT_LIMITS = "strict_limits";
@@ -24,6 +25,16 @@ double pilz_industrial_motion_planner::PlanningParameters::getSamplingTime() con
     ROS_WARN_ONCE("Planning parameter sampling_time not set, using default %f instead.", sampling_time);
   }
   return sampling_time;
+}
+
+double pilz_industrial_motion_planner::PlanningParameters::getSamplingDistance() const
+{
+  double sampling_distance = 0.001;
+  if (!nh_.getParam(PARAMS_PLANNING_PARAMS_NS + "/" + PARAMS_SAMPLING_DISTANCE, sampling_distance))
+  {
+    ROS_WARN_ONCE("Planning parameter sampling_distance not set, using default %f instead.", sampling_distance);
+  }
+  return sampling_distance;
 }
 
 bool pilz_industrial_motion_planner::PlanningParameters::getOutputTcpJoints() const

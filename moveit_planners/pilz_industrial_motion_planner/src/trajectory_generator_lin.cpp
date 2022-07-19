@@ -169,6 +169,7 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
   bool succeeded = false;
 
   const double sampling_time = planning_parameters_->getSamplingTime();
+  const double sampling_distance = planning_parameters_->getSamplingDistance();
   const double min_scaling_correction_factor = planning_parameters_->getMinScalingCorrectionFactor();
   const bool strict_limits = planning_parameters_->getStrictLimits();
   const bool trim_on_failure = planning_parameters_->getTrimOnFailure();
@@ -184,6 +185,9 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
     std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vp(
         cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, path));
 
+    // calculate sampling_time at constant velocity
+    const double const_sampling_time = sampling_distance / vp->maxVelocity();
+
     // combine path and velocity profile into Cartesian trajectory
     // with the third parameter set to false, KDL::Trajectory_Segment does not
     // take
@@ -194,8 +198,8 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
     //  kinematics
     Eigen::Isometry3d pose_sample_last;
     if (!generateJointTrajectory(scene, planner_limits_.getJointLimitContainer(), cart_trajectory, plan_info.group_name,
-                                 plan_info.link_name, plan_info.start_joint_position, sampling_time, joint_trajectory,
-                                 error_code, max_scaling_factors, pose_sample_last, false, output_tcp_joints,
+                                 plan_info.link_name, plan_info.start_joint_position, sampling_time, const_sampling_time,
+                                 joint_trajectory, error_code, max_scaling_factors, pose_sample_last, false, output_tcp_joints,
                                  strict_limits, min_scaling_correction_factor))
     {
       if (trim_on_failure && !joint_trajectory.points.empty())
