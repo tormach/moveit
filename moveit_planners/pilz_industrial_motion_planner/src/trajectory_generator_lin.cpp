@@ -183,7 +183,7 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
   {
     // create velocity profile
     std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vp(
-        cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, path));
+        cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, path, req.duration));
 
     // calculate sampling_time at constant velocity
     const double const_sampling_time = sampling_distance / vp->maxVelocity();

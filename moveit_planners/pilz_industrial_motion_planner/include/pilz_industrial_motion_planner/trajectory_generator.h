@@ -143,7 +143,8 @@ protected:
    */
   std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> cartesianTrapVelocityProfile(const double& max_velocity_scaling_factor,
                                                                      const double& max_acceleration_scaling_factor,
-                                                                     const std::unique_ptr<KDL::Path>& path) const;
+                                                                     const std::unique_ptr<KDL::Path>& path,
+                                                                     const double& duration = 0.0) const;
 
 private:
   virtual void cmdSpecificRequestValidation(const planning_interface::MotionPlanRequest& req) const;

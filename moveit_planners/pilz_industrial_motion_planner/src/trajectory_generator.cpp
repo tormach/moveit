@@ -287,7 +287,8 @@ void TrajectoryGenerator::setFailureResponse(const ros::Time& planning_start,
 std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile>
 TrajectoryGenerator::cartesianTrapVelocityProfile(const double& max_velocity_scaling_factor,
                                                   const double& max_acceleration_scaling_factor,
-                                                  const std::unique_ptr<KDL::Path>& path) const
+                                                  const std::unique_ptr<KDL::Path>& path,
+                                                  const double& duration) const
 {
   std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vp_trans(new pilz_industrial_motion_planner::VelocityProfileATrap(
       max_velocity_scaling_factor * planner_limits_.getCartesianLimits().getMaxTranslationalVelocity(),
@@ -297,7 +298,7 @@ TrajectoryGenerator::cartesianTrapVelocityProfile(const double& max_velocity_sca
 
   if (path->PathLength() > std::numeric_limits<double>::epsilon())  // avoid division by zero
   {
-    vp_trans->SetProfile(0, path->PathLength());
+    vp_trans->SetProfileDuration(0, path->PathLength(), duration);
   }
   else
   {

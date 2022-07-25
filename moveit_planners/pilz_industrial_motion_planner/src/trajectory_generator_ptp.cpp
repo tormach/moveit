@@ -85,7 +85,7 @@ void TrajectoryGeneratorPTP::planPTP(const std::map<std::string, double>& start_
                                      const std::map<std::string, double>& goal_pos,
                                      trajectory_msgs::JointTrajectory& joint_trajectory,
                                      const double& velocity_scaling_factor, const double& acceleration_scaling_factor,
-                                     const double& sampling_time)
+                                     const double& sampling_time, const double& duration)
 {
   // initialize joint names
   for (const auto& item : goal_pos)
@@ -135,7 +135,7 @@ void TrajectoryGeneratorPTP::planPTP(const std::map<std::string, double>& start_
                                          acceleration_scaling_factor * joint_limits_.getLimit(joint_name).max_acceleration,
                                          acceleration_scaling_factor * joint_limits_.getLimit(joint_name).max_deceleration)));
 
-    velocity_profile.at(joint_name).SetProfile(start_pos.at(joint_name), goal_pos.at(joint_name));
+    velocity_profile.at(joint_name).SetProfileDuration(start_pos.at(joint_name), goal_pos.at(joint_name), duration);
     if (velocity_profile.at(joint_name).firstPhaseDuration() > max_acc_time) {
       max_acc_time = velocity_profile.at(joint_name).firstPhaseDuration();
     }
@@ -249,7 +249,7 @@ void TrajectoryGeneratorPTP::plan(const planning_scene::PlanningSceneConstPtr& /
   // plan the ptp trajectory
   const double sampling_time = planning_parameters_->getSamplingTime();
   planPTP(plan_info.start_joint_position, plan_info.goal_joint_position, joint_trajectory,
-          req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor, sampling_time);
+          req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor, sampling_time, req.duration);
 }
 
 }  // namespace pilz_industrial_motion_planner
