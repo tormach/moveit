@@ -226,7 +226,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   ros::Time generation_begin = ros::Time::now();
 
   // generate the time samples
-  const double epsilon = 10e-06;  // avoid adding the last time sample twice
+  const double epsilon = sampling_time / 2.0; // avoid adding the last time sample twice, avoid short sample times
   std::vector<double> time_samples;
   double t_first_transition = trajectory.getVelocityProfile()->firstPhaseDuration();
   double t_second_transition = t_first_transition + trajectory.getVelocityProfile()->secondPhaseDuration();
@@ -312,14 +312,14 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
         !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, duration_last_sample,
                                  duration_current_sample, joint_limits, tmp_max_scaling_factors))
     {
+      max_scaling_factors.first = std::min(max_scaling_factors.first, old_max_scaling_factors.first * tmp_max_scaling_factors.first);
+      max_scaling_factors.second = std::min(max_scaling_factors.second, old_max_scaling_factors.second * tmp_max_scaling_factors.second);
       ROS_DEBUG_STREAM("Inverse kinematics solution at "
-                       << *time_iter << "s violates the joint velocity/acceleration/deceleration limits.");
-      max_scaling_factors.first = std::min(max_scaling_factors.first, tmp_max_scaling_factors.first);
-      max_scaling_factors.second = std::min(max_scaling_factors.second, tmp_max_scaling_factors.second);
+                      << *time_iter << "s violates the joint velocity/acceleration/deceleration limits. " <<
+                      "New limits: vel: " << max_scaling_factors.first << " acc: " << max_scaling_factors.second);
       success = false;
       error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
-      if ((old_max_scaling_factors.first * tmp_max_scaling_factors.first < min_scaling_correction_factor) ||
-          (old_max_scaling_factors.second * tmp_max_scaling_factors.second < min_scaling_correction_factor) ||
+      if ((max_scaling_factors.first < min_scaling_correction_factor) || (max_scaling_factors.second < min_scaling_correction_factor) ||
           strict_limits)
       {
         return false;

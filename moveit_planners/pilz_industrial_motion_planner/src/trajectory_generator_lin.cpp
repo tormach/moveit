@@ -164,7 +164,6 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
   std::unique_ptr<KDL::Path> path(setPathLIN(plan_info.start_pose, plan_info.goal_pose));
   planning_interface::MotionPlanRequest new_req = req;
   moveit_msgs::MoveItErrorCodes error_code;
-  std::pair<double, double> max_scaling_factors {req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor};
   bool scaling_factor_corrected = false;
   bool succeeded = false;
 
@@ -181,9 +180,10 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
 
   while (!succeeded)
   {
+    std::pair<double, double> max_scaling_factors {new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor};
     // create velocity profile
     std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vp(
-        cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, path, req.duration));
+        cartesianTrapVelocityProfile(max_scaling_factors.first, max_scaling_factors.second, path, new_req.duration));
 
     // calculate sampling_time at constant velocity
     const double const_sampling_time = sampling_distance / vp->maxVelocity();
@@ -207,7 +207,6 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
         // trimming active and at least one trajectory point, need to resample
         path = setPathLIN(plan_info.start_pose, pose_sample_last);
         ROS_DEBUG_STREAM("Shortened trajectory");
-        //continue;
       }
       else if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
       {
@@ -217,8 +216,8 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
         break; // planning failed due to joint velocity/acceleration violation
       }
 
-      new_req.max_velocity_scaling_factor = max_scaling_factors.first * new_req.max_velocity_scaling_factor;
-      new_req.max_acceleration_scaling_factor = max_scaling_factors.second * new_req.max_acceleration_scaling_factor;
+      new_req.max_velocity_scaling_factor = max_scaling_factors.first;
+      new_req.max_acceleration_scaling_factor = max_scaling_factors.second;
       if (new_req.max_velocity_scaling_factor < min_scaling_correction_factor ||
           new_req.max_acceleration_scaling_factor < min_scaling_correction_factor)
       {

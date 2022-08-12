@@ -203,18 +203,19 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
   std::unique_ptr<KDL::Path> cart_path(setPathCIRC(plan_info));
   planning_interface::MotionPlanRequest new_req = req;
   moveit_msgs::MoveItErrorCodes error_code;
-  std::pair<double, double> max_scaling_factors;
   bool scaling_factor_corrected = false;
   bool succeeded = false;
 
   const double sampling_time = planning_parameters_->getSamplingTime();
   const double sampling_distance = planning_parameters_->getSamplingDistance();
+  const double min_scaling_correction_factor = planning_parameters_->getMinScalingCorrectionFactor();
 
   while (!succeeded)
   {
+    std::pair<double, double> max_scaling_factors {new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor};
     // create velocity profile
     std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vel_profile(
-        cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, cart_path, new_req.duration));
+        cartesianTrapVelocityProfile(max_scaling_factors.first, max_scaling_factors.second, cart_path, new_req.duration));
 
     // calculate sampling_time at constant velocity
     const double const_sampling_time = sampling_distance / vel_profile->maxVelocity();;
@@ -238,10 +239,10 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
       }
 
       // planning failed due to joint velocity/acceleration violation
-      new_req.max_velocity_scaling_factor = max_scaling_factors.first * req.max_velocity_scaling_factor;
-      new_req.max_acceleration_scaling_factor = max_scaling_factors.second * req.max_acceleration_scaling_factor;
-      if (new_req.max_velocity_scaling_factor < MIN_SCALING_CORRECTION_FACTOR ||
-      new_req.max_acceleration_scaling_factor < MIN_SCALING_CORRECTION_FACTOR)
+      new_req.max_velocity_scaling_factor = max_scaling_factors.first;
+      new_req.max_acceleration_scaling_factor = max_scaling_factors.second;
+      if (new_req.max_velocity_scaling_factor < min_scaling_correction_factor ||
+          new_req.max_acceleration_scaling_factor < min_scaling_correction_factor)
       {
         break;
       }
