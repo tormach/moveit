@@ -217,7 +217,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const std::map<std::string, double>& initial_joint_position, const double& sampling_time, const double& const_sampling_time,
     trajectory_msgs::JointTrajectory& joint_trajectory, moveit_msgs::MoveItErrorCodes& error_code,
     std::pair<double, double>& max_scaling_factors, Eigen::Isometry3d &pose_sample_last, bool check_self_collision,
-    bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor)
+    bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor, bool output_accelerations)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
   const auto old_max_scaling_factors = max_scaling_factors;
@@ -338,14 +338,18 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       {
         double joint_velocity = (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current_sample;
         point.velocities.push_back(joint_velocity);
-        point.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
-                                      (duration_current_sample + duration_last_sample) * 2.0);
+        if (output_accelerations) {
+          point.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
+                                        (duration_current_sample + duration_last_sample) * 2.0);
+        }
         joint_velocity_last[joint_name] = joint_velocity;
       }
       else
       {
         point.velocities.push_back(0.);
-        point.accelerations.push_back(0.);
+        if (output_accelerations) {
+          point.accelerations.push_back(0.);
+        }
         joint_velocity_last[joint_name] = 0.;
       }
     }
@@ -371,18 +375,22 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       {
         point.velocities.push_back(tcp_lin_vel);
         point.velocities.push_back(tcp_rot_vel);
-        point.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) /
-                                      (duration_current_sample + duration_last_sample) * 2.0);
-        point.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) /
-                                      (duration_current_sample + duration_last_sample) * 2.0);
+        if (output_accelerations) {
+          point.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) /
+                                        (duration_current_sample + duration_last_sample) * 2.0);
+          point.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) /
+                                        (duration_current_sample + duration_last_sample) * 2.0);
+        }
         tcp_lin_vel_last = tcp_lin_vel;
         tcp_rot_vel_last = tcp_rot_vel;
       }
       else {
         point.velocities.push_back(0.0);
         point.velocities.push_back(0.0);
-        point.accelerations.push_back(0.0);
-        point.accelerations.push_back(0.0);
+        if (output_accelerations) {
+          point.accelerations.push_back(0.0);
+          point.accelerations.push_back(0.0);
+        }
         tcp_lin_vel_last = 0.0;
         tcp_rot_vel_last = 0.0;
       }
@@ -415,7 +423,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const std::string& link_name, const std::map<std::string, double>& initial_joint_position,
     const std::map<std::string, double>& initial_joint_velocity, trajectory_msgs::JointTrajectory& joint_trajectory,
     moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
-    bool check_self_collision, bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor)
+    bool check_self_collision, bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor, bool output_accelerations)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
   const auto old_max_scaling_factors = max_scaling_factors;
@@ -504,8 +512,10 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       waypoint_joint.positions.push_back(ik_solution.at(joint_name));
       double joint_velocity = (ik_solution.at(joint_name) - ik_solution_last.at(joint_name)) / duration_current;
       waypoint_joint.velocities.push_back(joint_velocity);
-      waypoint_joint.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
-                                             (duration_current + duration_last) * 2.0);
+      if (output_accelerations) {
+        waypoint_joint.accelerations.push_back((joint_velocity - joint_velocity_last.at(joint_name)) /
+                                               (duration_current + duration_last) * 2.0);
+      }
       // update the joint velocity
       joint_velocity_last[joint_name] = joint_velocity;
     }
@@ -528,8 +538,10 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       waypoint_joint.positions.push_back(tcp_rot);  // tcp_rot
       waypoint_joint.velocities.push_back(tcp_lin_vel);
       waypoint_joint.velocities.push_back(tcp_rot_vel);
-      waypoint_joint.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) / (duration_current + duration_last) * 2.0);
-      waypoint_joint.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) / (duration_current + duration_last) * 2.0);
+      if (output_accelerations) {
+        waypoint_joint.accelerations.push_back((tcp_lin_vel - tcp_lin_vel_last) / (duration_current + duration_last) * 2.0);
+        waypoint_joint.accelerations.push_back((tcp_rot_vel - tcp_rot_vel_last) / (duration_current + duration_last) * 2.0);
+      }
       tcp_lin_vel_last = tcp_lin_vel;
       tcp_rot_vel_last = tcp_rot_vel;
       frame_sample_last = frame_sample;
