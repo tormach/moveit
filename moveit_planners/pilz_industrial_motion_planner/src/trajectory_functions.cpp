@@ -268,9 +268,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     joint_trajectory.joint_names.push_back("tcp_rot");
   }
 
-  bool success = true;
-  max_scaling_factors.first = 1.0; // velocity
-  max_scaling_factors.second = 1.0; // acceleration
+  max_scaling_factors.first = old_max_scaling_factors.first; // velocity
+  max_scaling_factors.second = old_max_scaling_factors.second; // acceleration
   KDL::Frame frame_sample_last;
   KDL::RotationalInterpolation_SingleAxis rot_interpolation;
   double tcp_pos = 0.0;
@@ -312,18 +311,14 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
         !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, duration_last_sample,
                                  duration_current_sample, joint_limits, tmp_max_scaling_factors))
     {
-      max_scaling_factors.first = std::min(max_scaling_factors.first, old_max_scaling_factors.first * tmp_max_scaling_factors.first);
-      max_scaling_factors.second = std::min(max_scaling_factors.second, old_max_scaling_factors.second * tmp_max_scaling_factors.second);
+      max_scaling_factors.first = old_max_scaling_factors.first * tmp_max_scaling_factors.first;
+      max_scaling_factors.second = old_max_scaling_factors.second * tmp_max_scaling_factors.second;
       ROS_DEBUG_STREAM("Inverse kinematics solution at "
                       << *time_iter << "s violates the joint velocity/acceleration/deceleration limits. " <<
+                      "sample duration: " << duration_current_sample + duration_last_sample <<
                       "New limits: vel: " << max_scaling_factors.first << " acc: " << max_scaling_factors.second);
-      success = false;
       error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
-      if ((max_scaling_factors.first < min_scaling_correction_factor) || (max_scaling_factors.second < min_scaling_correction_factor) ||
-          strict_limits)
-      {
-        return false;
-      }
+      return false;
     }
 
     // fill the point with joint values
@@ -405,15 +400,13 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     duration_last_sample = duration_current_sample;
   }
 
-  if (success)
-  {
-    error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
-    double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
-    ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
-                                                       << " ms | " << duration_ms / joint_trajectory.points.size()
-                                                       << " ms per Point");
-  }
-  return success;
+  error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
+  double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
+  ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
+                                                     << " ms | " << duration_ms / joint_trajectory.points.size()
+                                                     << " ms per Point");
+
+  return true;
 }
 
 bool pilz_industrial_motion_planner::generateJointTrajectory(

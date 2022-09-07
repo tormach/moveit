@@ -216,8 +216,9 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
         break; // planning failed due to joint velocity/acceleration violation
       }
 
-      new_req.max_velocity_scaling_factor = max_scaling_factors.first;
-      new_req.max_acceleration_scaling_factor = max_scaling_factors.second;
+      const double new_scaling_factor = std::min(max_scaling_factors.first, max_scaling_factors.second);
+      new_req.max_velocity_scaling_factor = new_scaling_factor;
+      new_req.max_acceleration_scaling_factor = new_scaling_factor;
       if (new_req.max_velocity_scaling_factor < min_scaling_correction_factor ||
           new_req.max_acceleration_scaling_factor < min_scaling_correction_factor)
       {
