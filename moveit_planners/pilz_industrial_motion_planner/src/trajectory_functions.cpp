@@ -220,7 +220,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor, bool output_accelerations)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
-  const auto old_max_scaling_factors = max_scaling_factors;
 
   const moveit::core::RobotModelConstPtr& robot_model = scene->getRobotModel();
   ros::Time generation_begin = ros::Time::now();
@@ -268,8 +267,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     joint_trajectory.joint_names.push_back("tcp_rot");
   }
 
-  max_scaling_factors.first = old_max_scaling_factors.first; // velocity
-  max_scaling_factors.second = old_max_scaling_factors.second; // acceleration
   KDL::Frame frame_sample_last;
   KDL::RotationalInterpolation_SingleAxis rot_interpolation;
   double tcp_pos = 0.0;
@@ -309,10 +306,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     std::pair<double, double> tmp_max_scaling_factors;
     if (time_iter != time_samples.begin() &&
         !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, duration_last_sample,
-                                 duration_current_sample, joint_limits, tmp_max_scaling_factors))
+                                 duration_current_sample, joint_limits, max_scaling_factors))
     {
-      max_scaling_factors.first = old_max_scaling_factors.first * tmp_max_scaling_factors.first;
-      max_scaling_factors.second = old_max_scaling_factors.second * tmp_max_scaling_factors.second;
       ROS_DEBUG_STREAM("Inverse kinematics solution at "
                       << *time_iter << "s violates the joint velocity/acceleration/deceleration limits. " <<
                       "sample duration: " << duration_current_sample + duration_last_sample <<
@@ -419,7 +414,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     bool check_self_collision, bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor, bool output_accelerations)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
-  const auto old_max_scaling_factors = max_scaling_factors;
 
   const moveit::core::RobotModelConstPtr& robot_model = scene->getRobotModel();
   ros::Time generation_begin = ros::Time::now();
@@ -437,9 +431,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   joint_names.erase(std::remove_if(joint_names.begin(), joint_names.end(),
                  [](const std::string &s){return (s == "tcp_lin") || (s == "tcp_rot");}), joint_names.end());
 
-  bool success = true;
-  max_scaling_factors.first = 1.0; // velocity
-  max_scaling_factors.second = 1.0; // acceleration
   std::map<std::string, double> ik_solution;
   KDL::Frame frame_sample_last;
   KDL::RotationalInterpolation_SingleAxis rot_interpolation;
@@ -473,27 +464,19 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
           trajectory.points.at(i).time_from_start.toSec() - trajectory.points.at(i - 1).time_from_start.toSec();
     }
 
-    std::pair<double, double> tmp_max_scaling_factors;
     if (!verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, duration_last, duration_current,
-                                 joint_limits, tmp_max_scaling_factors))
+                                 joint_limits, max_scaling_factors))
     {
       // LCOV_EXCL_START since the same code was captured in a test in the other
       // overload generateJointTrajectory(...,
       // KDL::Trajectory, ...)
       // TODO: refactor to avoid code duplication.
-      ROS_DEBUG_STREAM("Inverse kinematics solution of the " << i
-                                                             << "th sample violates the joint "
-                                                                "velocity/acceleration/deceleration limits.");
-      max_scaling_factors.first = std::min(max_scaling_factors.first, tmp_max_scaling_factors.first);
-      max_scaling_factors.second = std::min(max_scaling_factors.second, tmp_max_scaling_factors.second);
-      success = false;
+      ROS_DEBUG_STREAM("Inverse kinematics solution of the "
+                      << i << "th sample violates the joint "
+                      "velocity/acceleration/deceleration limits." <<
+                      "New limits: vel: " << max_scaling_factors.first << " acc: " << max_scaling_factors.second);
       error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
-      if ((old_max_scaling_factors.first * tmp_max_scaling_factors.first < min_scaling_correction_factor) ||
-        (old_max_scaling_factors.second * tmp_max_scaling_factors.second < min_scaling_correction_factor) ||
-        strict_limits)
-      {
-        return false;
-      }
+      return false;
       // LCOV_EXCL_STOP
     }
 
@@ -546,14 +529,11 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     duration_last = duration_current;
   }
 
-  if (success)
-  {
-    error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
-    double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
-    ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
-                                                       << " ms | " << duration_ms / joint_trajectory.points.size()
-                                                       << " ms per Point");
-  }
+  error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
+  double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
+  ROS_DEBUG_STREAM("Generate trajectory (N-Points: " << joint_trajectory.points.size() << ") took " << duration_ms
+                                                     << " ms | " << duration_ms / joint_trajectory.points.size()
+                                                     << " ms per Point");
   return true;
 }
 

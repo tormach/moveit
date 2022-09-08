@@ -180,10 +180,10 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
 
   while (!succeeded)
   {
-    std::pair<double, double> max_scaling_factors {new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor};
+    std::pair<double, double> max_scaling_factors { 1.0, 1.0 };
     // create velocity profile
     std::unique_ptr<pilz_industrial_motion_planner::VelocityProfile> vp(
-        cartesianTrapVelocityProfile(max_scaling_factors.first, max_scaling_factors.second, path, new_req.duration));
+        cartesianTrapVelocityProfile(new_req.max_velocity_scaling_factor, new_req.max_acceleration_scaling_factor, path, new_req.duration));
 
     // calculate sampling_time at constant velocity
     const double const_sampling_time = sampling_distance / vp->maxVelocity();
@@ -216,11 +216,11 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
         break; // planning failed due to joint velocity/acceleration violation
       }
 
-      const double new_scaling_factor = std::min(max_scaling_factors.first, max_scaling_factors.second);
+      const double new_scaling_factor = std::min(new_req.max_velocity_scaling_factor * max_scaling_factors.first,
+                                                 new_req.max_acceleration_scaling_factor * max_scaling_factors.second);
       new_req.max_velocity_scaling_factor = new_scaling_factor;
       new_req.max_acceleration_scaling_factor = new_scaling_factor;
-      if (new_req.max_velocity_scaling_factor < min_scaling_correction_factor ||
-          new_req.max_acceleration_scaling_factor < min_scaling_correction_factor)
+      if (new_scaling_factor < min_scaling_correction_factor)
       {
         ROS_INFO_STREAM("Joint velocity or acceleration limit violated and below minimum scaling factor.");
         break; // would require scaling factor below threshold

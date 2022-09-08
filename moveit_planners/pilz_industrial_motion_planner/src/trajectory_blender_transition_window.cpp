@@ -101,9 +101,7 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
   }
   while (!succeeded)
   {
-    std::pair<double, double> max_scaling_factors;
-    max_scaling_factors.first = 1.0;
-    max_scaling_factors.second = 1.0;
+    std::pair<double, double> max_scaling_factors { 1.0, 1.0 };
     if (!generateJointTrajectory(planning_scene, limits_.getJointLimitContainer(), blend_trajectory_cartesian,
                                  group_name, req.link_name, initial_joint_position, initial_joint_velocity,
                                  blend_joint_trajectory, error_code, max_scaling_factors, true, output_tcp_joints,
@@ -118,8 +116,8 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
         break; // planning failed due to joint velocity/acceleration violation
       }
 
-      const double scaling_factor = std::fmin(max_scaling_factors.first, max_scaling_factors.second);
-      total_scaling_factor *= scaling_factor;
+      const double new_scaling_factor = std::min(max_scaling_factors.first, max_scaling_factors.second);
+      total_scaling_factor *= new_scaling_factor;
       if (total_scaling_factor < min_scaling_correction_factor)
       {
         ROS_INFO_STREAM("Joint velocity or acceleration limit violated and below minimum scaling factor.");
@@ -128,7 +126,7 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
 
       ROS_DEBUG_STREAM("updating scaling factor " << total_scaling_factor);
       // limit violation, space out cartesian trajectory points
-      scaleTrajectoryCartesian(blend_trajectory_cartesian, scaling_factor);
+      scaleTrajectoryCartesian(blend_trajectory_cartesian, new_scaling_factor);
       scaling_factor_corrected = true;
       continue;
       // LCOV_EXCL_STOP
