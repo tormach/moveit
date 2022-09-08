@@ -134,7 +134,7 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              trajectory_msgs::JointTrajectory& joint_trajectory,
                              moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
                              Eigen::Isometry3d &pose_sample_last, bool check_self_collision = false, bool output_tcp_joints = false,
-                             bool strict_limits = true, double min_scaling_correction_factor = 0.01, bool output_accelerations = false);
+                             bool output_accelerations = false);
 
 /**
  * @brief Generate joint trajectory from a MultiDOFJointTrajectory
@@ -155,7 +155,7 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              trajectory_msgs::JointTrajectory& joint_trajectory,
                              moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
                              bool check_self_collision = false, bool output_tcp_joints = false,
-                             bool strict_limits = true, double min_scaling_correction_factor = 0.01, bool output_accelerations = false);
+                             bool output_accelerations = false);
 
 /**
  * @brief Determines the sampling time and checks that both trajectories use the

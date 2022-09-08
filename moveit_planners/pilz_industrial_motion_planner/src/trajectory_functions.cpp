@@ -217,7 +217,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const std::map<std::string, double>& initial_joint_position, const double& sampling_time, const double& const_sampling_time,
     trajectory_msgs::JointTrajectory& joint_trajectory, moveit_msgs::MoveItErrorCodes& error_code,
     std::pair<double, double>& max_scaling_factors, Eigen::Isometry3d &pose_sample_last, bool check_self_collision,
-    bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor, bool output_accelerations)
+    bool output_tcp_joints, bool output_accelerations)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
 
@@ -411,7 +411,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     const std::string& link_name, const std::map<std::string, double>& initial_joint_position,
     const std::map<std::string, double>& initial_joint_velocity, trajectory_msgs::JointTrajectory& joint_trajectory,
     moveit_msgs::MoveItErrorCodes& error_code, std::pair<double, double>& max_scaling_factors,
-    bool check_self_collision, bool output_tcp_joints, bool strict_limits, double min_scaling_correction_factor, bool output_accelerations)
+    bool check_self_collision, bool output_tcp_joints, bool output_accelerations)
 {
   ROS_DEBUG("Generate joint trajectory from a Cartesian trajectory.");
 

@@ -104,8 +104,7 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
     std::pair<double, double> max_scaling_factors { 1.0, 1.0 };
     if (!generateJointTrajectory(planning_scene, limits_.getJointLimitContainer(), blend_trajectory_cartesian,
                                  group_name, req.link_name, initial_joint_position, initial_joint_velocity,
-                                 blend_joint_trajectory, error_code, max_scaling_factors, true, output_tcp_joints,
-                                 strict_limits, min_scaling_correction_factor))
+                                 blend_joint_trajectory, error_code, max_scaling_factors, true, output_tcp_joints))
     {
       // LCOV_EXCL_START
       if (res.error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
