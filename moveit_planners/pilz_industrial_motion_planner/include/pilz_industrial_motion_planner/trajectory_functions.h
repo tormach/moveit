@@ -181,7 +181,7 @@ bool determineAndCheckSamplingTime(const robot_trajectory::RobotTrajectoryPtr& f
  * equal, otherwise false.
  */
 bool isRobotStateEqual(const robot_state::RobotState& state1, const robot_state::RobotState& state2,
-                       const std::string& joint_group_name, double epsilon, bool compare_velocity = true, bool compare_acceleration = true);
+                       const std::string& joint_group_name, double epsilon);
 
 /**
  * @brief check if the robot state have zero velocity/acceleartion

@@ -230,11 +230,11 @@ void TrajectoryGeneratorPTP::extractMotionPlanInfo(const planning_scene::Plannin
       info.goal_joint_position[joint_constraint.joint_name] = joint_constraint.position;
     }
   }
-  // solve the ik
+  // solve the IK for the goal, we use a separate planning group with global solving enabled
   else
   {
     Eigen::Isometry3d goal_pose = getConstraintPose(req.goal_constraints.front());
-    if (!computePoseIK(scene, req.group_name, req.goal_constraints.at(0).position_constraints.at(0).link_name,
+    if (!computePoseIK(scene, req.group_name + "_global", req.goal_constraints.at(0).position_constraints.at(0).link_name,
                        goal_pose, robot_model_->getModelFrame(), info.start_joint_position, info.goal_joint_position))
     {
       throw PtpNoIkSolutionForGoalPose("No IK solution for goal pose");

@@ -303,7 +303,6 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     }
 
     // skip the first sample with zero time from start for limits checking
-    std::pair<double, double> tmp_max_scaling_factors;
     if (time_iter != time_samples.begin() &&
         !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, duration_last_sample,
                                  duration_current_sample, joint_limits, max_scaling_factors))
@@ -423,6 +422,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
   double duration_last = 0;
   double duration_current;
   joint_trajectory.joint_names.clear(); // clear previous run
+  joint_trajectory.points.clear();
   for (const auto& joint_position : ik_solution_last)
   {
     joint_trajectory.joint_names.push_back(joint_position.first);
@@ -552,6 +552,8 @@ bool pilz_industrial_motion_planner::determineAndCheckSamplingTime(
     return false;
   }
 
+  // note that the overall sampling time in the trajectory can vary
+  // we use the ramp up sampling time for convenience
   if (n1 >= 2)
   {
     sampling_time = first_trajectory->getWayPointDurationFromPrevious(1);
@@ -561,36 +563,12 @@ bool pilz_industrial_motion_planner::determineAndCheckSamplingTime(
     sampling_time = second_trajectory->getWayPointDurationFromPrevious(1);
   }
 
-  for (std::size_t i = 1; i < std::max(n1, n2); ++i)
-  {
-    if (i < n1)
-    {
-      if (fabs(sampling_time - first_trajectory->getWayPointDurationFromPrevious(i)) > epsilon)
-      {
-        ROS_ERROR_STREAM("First trajectory violates sampline time " << sampling_time << " between points " << (i - 1)
-                                                                    << "and " << i << " (indices).");
-        return false;
-      }
-    }
-
-    if (i < n2)
-    {
-      if (fabs(sampling_time - second_trajectory->getWayPointDurationFromPrevious(i)) > epsilon)
-      {
-        ROS_ERROR_STREAM("Second trajectory violates sampline time " << sampling_time << " between points " << (i - 1)
-                                                                     << "and " << i << " (indices).");
-        return false;
-      }
-    }
-  }
-
   return true;
 }
 
 bool pilz_industrial_motion_planner::isRobotStateEqual(const moveit::core::RobotState& state1,
                                                        const moveit::core::RobotState& state2,
-                                                       const std::string& joint_group_name, double epsilon,
-                                                       bool compare_velocity, bool compare_acceleration)
+                                                       const std::string& joint_group_name, double epsilon)
 {
   Eigen::VectorXd joint_position_1, joint_position_2;
   std::string group_name = joint_group_name;
@@ -608,7 +586,7 @@ bool pilz_industrial_motion_planner::isRobotStateEqual(const moveit::core::Robot
     return false;
   }
 
-  if (compare_velocity) {
+  if (state1.hasVelocities() && state2.hasVelocities()) {
     Eigen::VectorXd joint_velocity_1, joint_velocity_2;
 
     state1.copyJointGroupVelocities(group_name, joint_velocity_1);
@@ -622,7 +600,7 @@ bool pilz_industrial_motion_planner::isRobotStateEqual(const moveit::core::Robot
     }
   }
 
-  if (compare_acceleration)
+  if (state1.hasAccelerations() && state2.hasAccelerations())
   {
     Eigen::VectorXd joint_acc_1, joint_acc_2;
 
@@ -644,17 +622,21 @@ bool pilz_industrial_motion_planner::isRobotStateStationary(const moveit::core::
                                                             const std::string& group, double EPSILON)
 {
   Eigen::VectorXd joint_variable;
-  state.copyJointGroupVelocities(group, joint_variable);
-  if (joint_variable.norm() > EPSILON)
-  {
-    ROS_DEBUG("Joint velocities are not zero.");
-    return false;
+  if (state.hasVelocities()) {
+    state.copyJointGroupVelocities(group, joint_variable);
+    if (joint_variable.norm() > EPSILON)
+    {
+      ROS_DEBUG("Joint velocities are not zero.");
+      return false;
+    }
   }
-  state.copyJointGroupAccelerations(group, joint_variable);
-  if (joint_variable.norm() > EPSILON)
-  {
-    ROS_DEBUG("Joint accelerations are not zero.");
-    return false;
+  if (state.hasAccelerations()) {
+    state.copyJointGroupAccelerations(group, joint_variable);
+    if (joint_variable.norm() > EPSILON)
+    {
+      ROS_DEBUG("Joint accelerations are not zero.");
+      return false;
+    }
   }
   return true;
 }

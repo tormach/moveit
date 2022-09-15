@@ -54,7 +54,6 @@ std::vector<robot_trajectory::RobotTrajectoryPtr> PlanComponentsBuilder::build()
 void PlanComponentsBuilder::appendWithStrictTimeIncrease(robot_trajectory::RobotTrajectory& result,
                                                          const robot_trajectory::RobotTrajectory& source)
 {
-  // TODO, offset tcp positions
   std::string group_name = result.getGroupName();
   double tcp_lin_offset = 0.0;
   double tcp_rot_offset = 0.0;
@@ -68,15 +67,16 @@ void PlanComponentsBuilder::appendWithStrictTimeIncrease(robot_trajectory::Robot
       tcp_rot_offset = *result.getLastWayPoint().getJointPositions("tcp_rot");
     }
   }
+
+  size_t start_index = 1;
   if (result.empty() ||
       !pilz_industrial_motion_planner::isRobotStateEqual(result.getLastWayPoint(), source.getFirstWayPoint(),
                                                          group_name, ROBOT_STATE_EQUALITY_EPSILON))
   {
-    result.append(source, 0.0);
-    return;
+    start_index = 0;
   }
 
-  for (size_t i = 1; i < source.getWayPointCount(); ++i)
+  for (size_t i = start_index; i < source.getWayPointCount(); ++i)
   {
     if (is_tcp_group) {
       moveit::core::RobotState new_waypoint = source.getWayPoint(i);
@@ -87,7 +87,7 @@ void PlanComponentsBuilder::appendWithStrictTimeIncrease(robot_trajectory::Robot
       result.addSuffixWayPoint(new_waypoint, source.getWayPointDurationFromPrevious(i));
     }
     else {
-    result.addSuffixWayPoint(source.getWayPoint(i), source.getWayPointDurationFromPrevious(i));
+      result.addSuffixWayPoint(source.getWayPoint(i), source.getWayPointDurationFromPrevious(i));
     }
   }
 }
@@ -122,7 +122,7 @@ void PlanComponentsBuilder::blend(const planning_scene::PlanningSceneConstPtr& p
 
   // Append the new trajectory elements
   appendWithStrictTimeIncrease(*(traj_cont_.back()), *blend_response.first_trajectory);
-  traj_cont_.back()->append(*blend_response.blend_trajectory, 0.0);
+  appendWithStrictTimeIncrease(*(traj_cont_.back()), *blend_response.blend_trajectory);
   // Store the last new trajectory element for future processing
   traj_tail_ = blend_response.second_trajectory;  // first for next blending segment
 }

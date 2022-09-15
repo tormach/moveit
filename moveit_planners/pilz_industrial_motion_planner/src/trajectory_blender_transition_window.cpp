@@ -107,7 +107,7 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
                                  blend_joint_trajectory, error_code, max_scaling_factors, true, output_tcp_joints))
     {
       // LCOV_EXCL_START
-      if (res.error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
+      if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
       {
         break; // error not related to limit violation
       }
@@ -115,7 +115,9 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
         break; // planning failed due to joint velocity/acceleration violation
       }
 
-      const double new_scaling_factor = std::min(max_scaling_factors.first, max_scaling_factors.second);
+      double new_scaling_factor = std::min(max_scaling_factors.first, max_scaling_factors.second);
+      // make sure scaling factor is lowered and does not diverge to 1.0
+      new_scaling_factor = std::floor(new_scaling_factor / min_scaling_correction_factor) * min_scaling_correction_factor;
       total_scaling_factor *= new_scaling_factor;
       if (total_scaling_factor < min_scaling_correction_factor)
       {
@@ -209,7 +211,7 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::validate
   // end position of the first trajectory and start position of second
   // trajectory must be the same
   if (!pilz_industrial_motion_planner::isRobotStateEqual(
-          req.first_trajectory->getLastWayPoint(), req.second_trajectory->getFirstWayPoint(), req.group_name, EPSILON, false, false))
+          req.first_trajectory->getLastWayPoint(), req.second_trajectory->getFirstWayPoint(), req.group_name, EPSILON))
   {
     ROS_ERROR_STREAM("During blending the last point of the preceding and the first point of the succeding trajectory");
     error_code.val = moveit_msgs::MoveItErrorCodes::INVALID_MOTION_PLAN;
@@ -302,7 +304,7 @@ void pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blendTra
 void pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::scaleTrajectoryCartesian(pilz_industrial_motion_planner::CartesianTrajectory& trajectory, double scale_factor) const
 {
   for (auto &point: trajectory.points) {
-    point.time_from_start *= scale_factor;
+    point.time_from_start *= 1.0 / scale_factor;
   }
 }
 

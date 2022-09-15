@@ -144,9 +144,9 @@ void TrajectoryGeneratorLIN::extractMotionPlanInfo(const planning_scene::Plannin
 
   if (!planning_parameters_->getTrimOnFailure())
   {
-    // check goal pose ik before Cartesian motion plan starts
+    // check goal pose ik before Cartesian motion plan starts, we use a separate planning group with global solving enabled
     std::map<std::string, double> ik_solution;
-    if (!computePoseIK(scene, info.group_name, info.link_name, info.goal_pose, frame_id, info.start_joint_position,
+    if (!computePoseIK(scene, info.group_name + "_global", info.link_name, info.goal_pose, frame_id, info.start_joint_position,
                        ik_solution))
     {
       std::ostringstream os;
