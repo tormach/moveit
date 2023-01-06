@@ -81,13 +81,18 @@ TrajectoryGeneratorPTP::TrajectoryGeneratorPTP(const robot_model::RobotModelCons
   ROS_INFO("Initialized Point-to-Point Trajectory Generator.");
 }
 
-void TrajectoryGeneratorPTP::planPTP(const std::map<std::string, double>& start_pos,
+void TrajectoryGeneratorPTP::planPTP(const planning_scene::PlanningSceneConstPtr& scene,
+                                     const std::string &group_name,
+                                     const std::map<std::string, double>& start_pos,
                                      const std::map<std::string, double>& goal_pos,
                                      trajectory_msgs::JointTrajectory& joint_trajectory,
                                      const double& velocity_scaling_factor, const double& acceleration_scaling_factor,
                                      const double& sampling_time, const double& duration)
 {
+  // clear previous run
+  joint_trajectory.points.clear();
   // initialize joint names
+  joint_trajectory.joint_names.clear();
   for (const auto& item : goal_pos)
   {
     joint_trajectory.joint_names.push_back(item.first);
@@ -188,6 +193,11 @@ void TrajectoryGeneratorPTP::planPTP(const std::map<std::string, double>& start_
   // add last time
   time_samples.push_back(max_duration);
 
+  // prepare self collision checking
+  const moveit::core::RobotModelConstPtr& robot_model = scene->getRobotModel();
+  robot_state::RobotState rstate(robot_model);
+  const auto* jmg = robot_model->getJointModelGroup(group_name);
+
   // construct joint trajectory point
   for (double time_stamp : time_samples)
   {
@@ -199,6 +209,25 @@ void TrajectoryGeneratorPTP::planPTP(const std::map<std::string, double>& start_
       point.velocities.push_back(velocity_profile.at(joint_name).Vel(time_stamp));
       point.accelerations.push_back(velocity_profile.at(joint_name).Acc(time_stamp));
     }
+
+    // check self collision
+    rstate.setJointGroupPositions(jmg, point.positions);
+    rstate.update();
+    collision_detection::CollisionRequest collision_req;
+    collision_req.group_name = jmg->getName();
+    collision_req.verbose = true;
+    collision_detection::CollisionResult collision_res;
+    scene->checkSelfCollision(collision_req, collision_res, rstate);
+    if (collision_res.collision) {
+      // LCOV_EXCL_START
+      {
+        std::stringstream error_str;
+        error_str << "Generated PTP trajectory has self collision at" << time_stamp;
+        throw PtpTrajectryHasSelfCollision(error_str.str());
+      }
+      // LCOV_EXCL_STOP
+    }
+
     joint_trajectory.points.push_back(point);
   }
 
@@ -242,14 +271,40 @@ void TrajectoryGeneratorPTP::extractMotionPlanInfo(const planning_scene::Plannin
   }
 }
 
-void TrajectoryGeneratorPTP::plan(const planning_scene::PlanningSceneConstPtr& /*scene*/,
+void TrajectoryGeneratorPTP::plan(const planning_scene::PlanningSceneConstPtr& scene,
                                   const planning_interface::MotionPlanRequest& req, const MotionPlanInfo& plan_info,
                                   const double& /*sampling_time*/, trajectory_msgs::JointTrajectory& joint_trajectory)
 {
+  bool succeeded = false;
+  std::map<std::string, double> goal_joint_position {plan_info.goal_joint_position};
   // plan the ptp trajectory
   const double sampling_time = planning_parameters_->getSamplingTime();
-  planPTP(plan_info.start_joint_position, plan_info.goal_joint_position, joint_trajectory,
-          req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor, sampling_time, req.duration);
+  const bool trim_on_failure = planning_parameters_->getTrimOnFailure();
+
+  while (!succeeded)
+  {
+    try
+    {
+      planPTP(scene, plan_info.group_name, plan_info.start_joint_position, goal_joint_position,
+              joint_trajectory, req.max_velocity_scaling_factor, req.max_acceleration_scaling_factor, sampling_time,
+              req.duration);
+      succeeded = true;
+    }
+    catch (const PtpTrajectryHasSelfCollision& error)
+    {
+      if (trim_on_failure && !joint_trajectory.points.empty()) {
+        for (int i = 0; i < joint_trajectory.joint_names.size(); ++i)
+        {
+          goal_joint_position[joint_trajectory.joint_names.at(i)] = joint_trajectory.points.back().positions.at(i);
+        }
+        continue;
+      }
+      else
+      {
+        throw error;
+      }
+    }
+  }
 }
 
 }  // namespace pilz_industrial_motion_planner

@@ -49,6 +49,7 @@ namespace pilz_industrial_motion_planner
 
 CREATE_MOVEIT_ERROR_CODE_EXCEPTION(PtpVelocityProfileSyncFailed, moveit_msgs::MoveItErrorCodes::FAILURE);
 CREATE_MOVEIT_ERROR_CODE_EXCEPTION(PtpNoIkSolutionForGoalPose, moveit_msgs::MoveItErrorCodes::NO_IK_SOLUTION);
+CREATE_MOVEIT_ERROR_CODE_EXCEPTION(PtpTrajectryHasSelfCollision, moveit_msgs::MoveItErrorCodes::FAILURE);
 
 /**
  * @brief This class implements a point-to-point trajectory generator based on
@@ -74,6 +75,8 @@ private:
 
   /**
    * @brief plan ptp joint trajectory with zero start velocity
+   * @param scene
+   * @param group_name
    * @param start_pos
    * @param goal_pos
    * @param joint_trajectory
@@ -83,7 +86,8 @@ private:
    * @param sampling_time
    * @param duration
    */
-  void planPTP(const std::map<std::string, double>& start_pos, const std::map<std::string, double>& goal_pos,
+  void planPTP(const planning_scene::PlanningSceneConstPtr& scene, const std::string &group_name,
+               const std::map<std::string, double>& start_pos, const std::map<std::string, double>& goal_pos,
                trajectory_msgs::JointTrajectory& joint_trajectory, const double& velocity_scaling_factor,
                const double& acceleration_scaling_factor, const double& sampling_time, const double& duration);
 
