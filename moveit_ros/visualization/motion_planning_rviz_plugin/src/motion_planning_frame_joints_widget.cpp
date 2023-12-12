@@ -203,7 +203,11 @@ MotionPlanningFrameJointsWidget::~MotionPlanningFrameJointsWidget()
 
 void MotionPlanningFrameJointsWidget::clearRobotModel()
 {
+  // see Qt docs and https://bugreports.qt.io/browse/QTBUG-49966
+  // selectionModel needs to by deleted manually to prevent memory leaks
+  QItemSelectionModel* m = ui_->joints_view_->selectionModel();
   ui_->joints_view_->setModel(nullptr);
+  delete m;
   start_state_handler_.reset();
   goal_state_handler_.reset();
   start_state_model_.reset();
@@ -261,7 +265,11 @@ void MotionPlanningFrameJointsWidget::queryGoalStateChanged()
 
 void MotionPlanningFrameJointsWidget::setActiveModel(JMGItemModel* model)
 {
+  // see Qt docs and https://bugreports.qt.io/browse/QTBUG-49966
+  // selectionModel needs to by deleted manually to prevent memory leaks
+  QItemSelectionModel* m = ui_->joints_view_->selectionModel();
   ui_->joints_view_->setModel(model);
+  delete m;
   ui_->joints_view_label_->setText(
       QString("Group joints of %1 state").arg(model == start_state_model_.get() ? "start" : "goal"));
 }
