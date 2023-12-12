@@ -78,6 +78,7 @@
 
 namespace moveit_rviz_plugin
 {
+constexpr int MAX_STATUS_TEXT_LENGTH = 10000;
 // ******************************************************************************************
 // Base class contructor
 // ******************************************************************************************
@@ -145,15 +146,15 @@ MotionPlanningDisplay::MotionPlanningDisplay()
                               plan_category_, SLOT(changedQueryMarkerScale()), this);
   query_marker_scale_property_->setMin(0.0f);
 
-  query_marker_offset_category_ = new rviz::Property("Interactive Marker Offset", QVariant(), "", plan_category_, nullptr, this);
+  query_marker_offset_category_ =
+      new rviz::Property("Interactive Marker Offset", QVariant(), "", plan_category_, nullptr, this);
   query_marker_offset_position_property_ =
-      new rviz::VectorProperty("Position", Ogre::Vector3(0, 0, 0),
-                               "Specifies the interactive marker offset position.",
+      new rviz::VectorProperty("Position", Ogre::Vector3(0, 0, 0), "Specifies the interactive marker offset position.",
                                query_marker_offset_category_, SLOT(changedQueryMarkerOffset()), this);
   query_marker_offset_orientation_property_ =
       new rviz::QuaternionProperty("Orientation", Ogre::Quaternion(1, 0, 0, 0),
-                               "Specifies the interactive marker offset orientation.",
-                               query_marker_offset_category_, SLOT(changedQueryMarkerOffset()), this);
+                                   "Specifies the interactive marker offset orientation.",
+                                   query_marker_offset_category_, SLOT(changedQueryMarkerOffset()), this);
 
   query_start_color_property_ =
       new rviz::ColorProperty("Start State Color", QColor(0, 255, 0), "The highlight color for the start state",
@@ -698,7 +699,21 @@ void MotionPlanningDisplay::setStatusTextColor(const QColor& color)
 void MotionPlanningDisplay::addStatusText(const std::string& text)
 {
   if (frame_)
+  {
     frame_->ui_->status_text->append(QString::fromStdString(text));
+
+    // Limit the number of characters in the status text
+    QTextCursor cursor(frame_->ui_->status_text->document());
+    cursor.movePosition(QTextCursor::End);
+    int currentLength = cursor.position();
+    if (currentLength > MAX_STATUS_TEXT_LENGTH)
+    {
+      cursor.setPosition(0);  // Move cursor to the start
+      int charsToRemove = currentLength - MAX_STATUS_TEXT_LENGTH;
+      cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, charsToRemove);
+      cursor.removeSelectedText();
+    }
+  }
 }
 
 void MotionPlanningDisplay::addStatusText(const std::vector<std::string>& text)
@@ -838,7 +853,7 @@ void MotionPlanningDisplay::publishInteractiveMarkers(bool pose_update)
       pose.orientation.x = orientation.x;
       pose.orientation.y = orientation.y;
       pose.orientation.z = orientation.z;
-      for (const auto &eef : robot_interaction_->getActiveEndEffectors())
+      for (const auto& eef : robot_interaction_->getActiveEndEffectors())
       {
         query_goal_state_->setPoseOffset(eef, pose);
         query_start_state_->setPoseOffset(eef, pose);
