@@ -243,7 +243,7 @@ void MotionPlanningFrameJointsWidget::changePlanningGroup(
 
 void MotionPlanningFrameJointsWidget::queryStartStateChanged()
 {
-  if (!start_state_model_ || !start_state_handler_)
+  if (!start_state_model_ || !start_state_handler_ || !isVisible())
     return;
   ignore_state_changes_ = true;
   start_state_model_->updateRobotState(*start_state_handler_->getState());
@@ -254,7 +254,7 @@ void MotionPlanningFrameJointsWidget::queryStartStateChanged()
 
 void MotionPlanningFrameJointsWidget::queryGoalStateChanged()
 {
-  if (!goal_state_model_ || !goal_state_handler_)
+  if (!goal_state_model_ || !goal_state_handler_ || !isVisible())
     return;
   ignore_state_changes_ = true;
   goal_state_model_->updateRobotState(*goal_state_handler_->getState());
