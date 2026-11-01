@@ -44,6 +44,37 @@
 
 #include "pilz_industrial_motion_planner/velocity_profile.h"
 
+namespace
+{
+/**
+ * @brief Replace the velocities of the interior points with a three-point
+ * (central) difference of the positions, for the first num_joints joints.
+ *
+ * The sampling loop computes each velocity as a backward difference, which
+ * is the mean velocity over the previous interval, i.e. it lags the position
+ * by half a sample. A trajectory controller that interpolates the points with
+ * cubic splines then puts a small velocity step at every point, which the
+ * drives feel as a torque kick at the sampling rate. The three-point
+ * difference is exact for a parabola and also handles unequal intervals.
+ * The first and last points (at rest) are left unchanged.
+ */
+void setCentralDifferenceVelocities(trajectory_msgs::JointTrajectory& joint_trajectory, std::size_t num_joints)
+{
+  auto& points = joint_trajectory.points;
+  for (std::size_t i = 1; i + 1 < points.size(); ++i)
+  {
+    const double h_last = (points[i].time_from_start - points[i - 1].time_from_start).toSec();
+    const double h_next = (points[i + 1].time_from_start - points[i].time_from_start).toSec();
+    for (std::size_t j = 0; j < num_joints; ++j)
+    {
+      const double slope_last = (points[i].positions[j] - points[i - 1].positions[j]) / h_last;
+      const double slope_next = (points[i + 1].positions[j] - points[i].positions[j]) / h_next;
+      points[i].velocities[j] = (h_next * slope_last + h_last * slope_next) / (h_last + h_next);
+    }
+  }
+}
+}  // namespace
+
 bool pilz_industrial_motion_planner::computePoseIK(const planning_scene::PlanningSceneConstPtr& scene,
                                                    const std::string& group_name, const std::string& link_name,
                                                    const Eigen::Isometry3d& pose, const std::string& frame_id,
@@ -393,6 +424,11 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     ik_solution_last = ik_solution;
     duration_last_sample = duration_current_sample;
   }
+
+  // the limits above are checked with the backward differences; output the
+  // central differences (the tcp_lin/tcp_rot entries follow the joints and
+  // are left unchanged)
+  setCentralDifferenceVelocities(joint_trajectory, joint_names.size());
 
   error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
   double duration_ms = (ros::Time::now() - generation_begin).toSec() * 1000;
