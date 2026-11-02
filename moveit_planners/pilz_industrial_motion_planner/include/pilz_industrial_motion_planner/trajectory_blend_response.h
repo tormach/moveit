@@ -50,6 +50,10 @@ struct TrajectoryBlendResponse
   robot_trajectory::RobotTrajectoryPtr blend_trajectory;
   robot_trajectory::RobotTrajectoryPtr second_trajectory;
 
+  // Time scaling factor the blend needed to stay within the joint limits
+  // (1.0 = none); the first and second trajectory are not scaled
+  double scaling_factor{ 1.0 };
+
   // Error code
   moveit_msgs::MoveItErrorCodes error_code;
 };

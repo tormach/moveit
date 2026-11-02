@@ -109,6 +109,12 @@ public:
    */
   std::vector<robot_trajectory::RobotTrajectoryPtr> build() const;
 
+  /**
+   * @return The smallest time scaling factor any blend needed to stay within
+   * the joint limits since the last reset (1.0 if none needed scaling).
+   */
+  double getMinBlendScalingFactor() const;
+
 private:
   void blend(const planning_scene::PlanningSceneConstPtr& planning_scene,
              const robot_trajectory::RobotTrajectoryPtr& other, const double blend_radius);
@@ -139,6 +145,9 @@ private:
   //! The trajectory container under construction.
   std::vector<robot_trajectory::RobotTrajectoryPtr> traj_cont_;
 
+  //! The smallest blend scaling factor since the last reset.
+  double min_blend_scaling_factor_{ 1.0 };
+
 private:
   //! Constant to check for equality of variables of two RobotState instances.
   static constexpr double ROBOT_STATE_EQUALITY_EPSILON = 1e-4;
@@ -158,6 +167,12 @@ inline void PlanComponentsBuilder::reset()
 {
   traj_tail_ = nullptr;
   traj_cont_.clear();
+  min_blend_scaling_factor_ = 1.0;
+}
+
+inline double PlanComponentsBuilder::getMinBlendScalingFactor() const
+{
+  return min_blend_scaling_factor_;
 }
 
 }  // namespace pilz_industrial_motion_planner

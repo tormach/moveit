@@ -258,6 +258,7 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
     ROS_INFO_STREAM("Joint velocity or acceleration limit violated during blending. \nScaling factor has been corrected to: " <<
                     total_scaling_factor);
   }
+  res.scaling_factor = total_scaling_factor;
 
   res.first_trajectory = std::make_shared<robot_trajectory::RobotTrajectory>(req.first_trajectory->getRobotModel(),
                                                                              req.first_trajectory->getGroup());
