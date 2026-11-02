@@ -356,7 +356,8 @@ TEST_P(TrajectoryBlenderTransitionWindowTest, testDifferentSamplingTimes)
  *
  * Expected Results:
  *    1. Two linear trajectories generated.
- *    2. Blending trajectory cannot be generated.
+ *    2. Blending trajectory generated (the blend is sampled by time, so the
+ *       sampling of the trajectories does not need to be uniform).
  */
 TEST_P(TrajectoryBlenderTransitionWindowTest, testNonUniformSamplingTime)
 {
@@ -376,7 +377,7 @@ TEST_P(TrajectoryBlenderTransitionWindowTest, testNonUniformSamplingTime)
   blend_req.first_trajectory = res.at(0).trajectory_;
   blend_req.second_trajectory = res.at(1).trajectory_;
   blend_req.blend_radius = seq.getBlendRadius(0);
-  EXPECT_FALSE(blender_->blend(planning_scene_, blend_req, blend_res));
+  EXPECT_TRUE(blender_->blend(planning_scene_, blend_req, blend_res));
 }
 
 /**

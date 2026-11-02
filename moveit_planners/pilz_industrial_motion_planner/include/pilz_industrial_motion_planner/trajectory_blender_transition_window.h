@@ -122,58 +122,35 @@ private:
                                 std::size_t& first_interse_index, std::size_t& second_interse_index) const;
 
   /**
-   * @brief Determine how the second trajectory should be aligned with the first
-   * trajectory for blend.
-   * Let tau_1 be the time of the first trajectory from the first_interse_index
-   * to the end and tau_2 the time of the
-   * second trajectory from the beginning to the second_interse_index:
-   *  - if tau_1 > tau_2:<br>
-   *    align the end of the first trajectory with second_interse_index
-   *    <pre>
-   *    first traj:  |-------------|--------!--------------|
-   *    second traj:                        |--------------|-------------------|
-   *    blend phase:               |-----------------------|
-   *    </pre>
-   *  - else:<br>
-   *    align the first_interse_index with the beginning of the second
-   * trajectory
-   *    <pre>
-   *    first traj:  |-------------|-----------------------|
-   *    second traj: |-----------------------!----------|-------------------|
-   *    blend phase:               |----------------------------------|
-   *    </pre>
-   *
-   * @param req: trajectory blend request
-   * @param first_interse_index: index of the intersection point between first
-   * trajectory and blend sphere
-   * @param second_interse_index: index of the intersection point between second
-   * trajectory and blend sphere
-   * @param blend_align_index: index on the first trajectory, to which the first
-   * point on the second trajectory should
-   * be aligned to for motion blend. It is now always same as
-   * first_interse_index
-   * @param blend_time: time of the motion blend period
-   */
-  void determineTrajectoryAlignment(const pilz_industrial_motion_planner::TrajectoryBlendRequest& req,
-                                    std::size_t first_interse_index, std::size_t second_interse_index,
-                                    std::size_t& blend_align_index) const;
-
-  /**
    * @brief blend two trajectories in Cartesian space, result in a
    * MultiDOFJointTrajectory which consists
    * of a list of transforms for the blend phase.
+   * The blend is a quintic Hermite curve in position and in orientation
+   * (rotation vector) from the last point of the first trajectory before the
+   * blend sphere to the first point of the second trajectory after it, with
+   * the velocities and accelerations of the two trajectories at these points.
+   * Its duration is chosen so the speed changes smoothly from the speed
+   * entering the blend to the speed leaving it, over the path length the two
+   * trajectories would have covered inside the sphere, so the blend does not
+   * overshoot the speed of the trajectories next to it, and slows down in
+   * sharp corners. As in the LIN/CIRC planners, the rotation sets the
+   * duration only where it is the longer motion.
    * @param req
    * @param first_interse_index
    * @param second_interse_index
-   * @param blend_begin_index
-   * @param sampling_time
+   * @param sampling_time: approximate time between the blend samples
    * @param trajectory: the resulting blend trajectory inside the blending
-   * sphere
+   * sphere; the first point after second_interse_index on the second
+   * trajectory follows its last sample at blend_time
+   * @param blend_time: duration of the blend, from the last point before the
+   * sphere to the first point after it
+   * @return false if the blend curve leaves the blend sphere (by more than
+   * its start and end points do)
    */
-  void blendTrajectoryCartesian(const pilz_industrial_motion_planner::TrajectoryBlendRequest& req,
+  bool blendTrajectoryCartesian(const pilz_industrial_motion_planner::TrajectoryBlendRequest& req,
                                 const std::size_t first_interse_index, const std::size_t second_interse_index,
-                                const std::size_t blend_align_index, double sampling_time,
-                                pilz_industrial_motion_planner::CartesianTrajectory& trajectory) const;
+                                double sampling_time, pilz_industrial_motion_planner::CartesianTrajectory& trajectory,
+                                double& blend_time) const;
 
   void scaleTrajectoryCartesian(pilz_industrial_motion_planner::CartesianTrajectory& trajectory, double scale_factor) const;
 

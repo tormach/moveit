@@ -35,10 +35,122 @@
 #include "pilz_industrial_motion_planner/trajectory_blender_transition_window.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <math.h>
 #include <tf2_eigen/tf2_eigen.h>
 #include <moveit/planning_interface/planning_interface.h>
+
+namespace
+{
+// Motion of the blend link at a waypoint: position and rotation vector of the
+// orientation relative to the waypoint, with their first and second time
+// derivatives.
+struct LinkMotion
+{
+  Eigen::Isometry3d pose;
+  Eigen::Vector3d vel{ Eigen::Vector3d::Zero() };
+  Eigen::Vector3d acc{ Eigen::Vector3d::Zero() };
+  Eigen::Vector3d ang_vel{ Eigen::Vector3d::Zero() };
+  Eigen::Vector3d ang_acc{ Eigen::Vector3d::Zero() };
+};
+
+Eigen::Vector3d rotationVector(const Eigen::Matrix3d& rotation)
+{
+  const Eigen::AngleAxisd angle_axis(rotation);
+  return angle_axis.angle() * angle_axis.axis();
+}
+
+// Velocity and acceleration at the middle one of three samples, taken h0
+// before and h1 after it (exact for a parabola through the samples).
+void finiteDifferences(const Eigen::Vector3d& x0, const Eigen::Vector3d& x1, const Eigen::Vector3d& x2, double h0,
+                       double h1, Eigen::Vector3d& vel, Eigen::Vector3d& acc)
+{
+  const Eigen::Vector3d slope0 = (x1 - x0) / h0;
+  const Eigen::Vector3d slope1 = (x2 - x1) / h1;
+  vel = (h1 * slope0 + h0 * slope1) / (h0 + h1);
+  acc = 2.0 * (slope1 - slope0) / (h0 + h1);
+}
+
+// Motion of the link at waypoint index; the first and last waypoints of a
+// trajectory are at rest.
+LinkMotion linkMotionAt(const robot_trajectory::RobotTrajectory& traj, std::size_t index, const std::string& link_name)
+{
+  LinkMotion motion;
+  motion.pose = traj.getWayPoint(index).getFrameTransform(link_name);
+  if (index == 0 || index + 1 >= traj.getWayPointCount())
+  {
+    return motion;
+  }
+  const Eigen::Isometry3d pose0 = traj.getWayPoint(index - 1).getFrameTransform(link_name);
+  const Eigen::Isometry3d pose2 = traj.getWayPoint(index + 1).getFrameTransform(link_name);
+  const double h0 = traj.getWayPointDurationFromPrevious(index);
+  const double h1 = traj.getWayPointDurationFromPrevious(index + 1);
+  finiteDifferences(pose0.translation(), motion.pose.translation(), pose2.translation(), h0, h1, motion.vel, motion.acc);
+  finiteDifferences(rotationVector(pose0.linear() * motion.pose.linear().transpose()), Eigen::Vector3d::Zero(),
+                    rotationVector(pose2.linear() * motion.pose.linear().transpose()), h0, h1, motion.ang_vel,
+                    motion.ang_acc);
+  return motion;
+}
+
+// Time to cover the distance when the speed changes smoothly (as a cubic in
+// time) from speed0 to speed1, with the accelerations acc0 and acc1 along the
+// path at the ends; 0 if there is no motion.
+double smoothTransitionTime(double distance, double speed0, double speed1, double acc0, double acc1)
+{
+  const double mean_speed = 0.5 * (speed0 + speed1);
+  if (mean_speed <= std::numeric_limits<double>::epsilon())
+  {
+    return 0.0;
+  }
+  // distance = mean_speed * T + (acc0 - acc1) / 12 * T^2
+  const double discriminant = mean_speed * mean_speed + (acc0 - acc1) / 3.0 * distance;
+  if (discriminant < 0.0)
+  {
+    return distance / mean_speed;
+  }
+  return 2.0 * distance / (mean_speed + std::sqrt(discriminant));
+}
+
+// Quintic Hermite interpolation at time t of a duration from (x0, v0, a0) to
+// (x1, v1, a1).
+Eigen::Vector3d quinticHermite(const Eigen::Vector3d& x0, const Eigen::Vector3d& v0, const Eigen::Vector3d& a0,
+                               const Eigen::Vector3d& x1, const Eigen::Vector3d& v1, const Eigen::Vector3d& a1,
+                               double duration, double t)
+{
+  const double s = t / duration;
+  const double s2 = s * s;
+  const double s3 = s2 * s;
+  const double s4 = s3 * s;
+  const double s5 = s4 * s;
+  return (1 - 10 * s3 + 15 * s4 - 6 * s5) * x0 + duration * (s - 6 * s3 + 8 * s4 - 3 * s5) * v0 +
+         duration * duration * 0.5 * (s2 - 3 * s3 + 3 * s4 - s5) * a0 + (10 * s3 - 15 * s4 + 6 * s5) * x1 +
+         duration * (-4 * s3 + 7 * s4 - 3 * s5) * v1 + duration * duration * 0.5 * (s3 - 2 * s4 + s5) * a1;
+}
+
+// Speed along the direction of motion, and the acceleration along it.
+void speedAndPathAcceleration(const Eigen::Vector3d& vel, const Eigen::Vector3d& acc, double& speed, double& path_acc)
+{
+  speed = vel.norm();
+  path_acc = speed > std::numeric_limits<double>::epsilon() ? acc.dot(vel) / speed : 0.0;
+}
+
+// Length of the link's path (translation and rotation angle) between two
+// waypoints.
+void pathLength(const robot_trajectory::RobotTrajectory& traj, std::size_t first, std::size_t last,
+                const std::string& link_name, double& distance, double& angle)
+{
+  Eigen::Isometry3d previous = traj.getWayPoint(first).getFrameTransform(link_name);
+  for (std::size_t i = first + 1; i <= last; ++i)
+  {
+    const Eigen::Isometry3d pose = traj.getWayPoint(i).getFrameTransform(link_name);
+    distance += (pose.translation() - previous.translation()).norm();
+    angle += Eigen::AngleAxisd(pose.linear() * previous.linear().transpose()).angle();
+    previous = pose;
+  }
+}
+}  // namespace
 
 bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
     const planning_scene::PlanningSceneConstPtr& planning_scene,
@@ -66,15 +178,16 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
     return false;
   }
 
-  // Select blending period and adjust the start and end point of the blend
-  // phase
-  std::size_t blend_align_index;
-  determineTrajectoryAlignment(req, first_intersection_index, second_intersection_index, blend_align_index);
-
   // blend the trajectories in Cartesian space
   pilz_industrial_motion_planner::CartesianTrajectory blend_trajectory_cartesian;
-  blendTrajectoryCartesian(req, first_intersection_index, second_intersection_index, blend_align_index, sampling_time,
-                           blend_trajectory_cartesian);
+  double blend_time;
+  if (!blendTrajectoryCartesian(req, first_intersection_index, second_intersection_index, sampling_time,
+                                blend_trajectory_cartesian, blend_time))
+  {
+    ROS_ERROR("Blend curve leaves the blend sphere.");
+    res.error_code.val = moveit_msgs::MoveItErrorCodes::INVALID_MOTION_PLAN;
+    return false;
+  }
 
   // generate the blending trajectory in joint space
   std::map<std::string, double> initial_joint_position, initial_joint_velocity;
@@ -171,8 +284,10 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
                                           req.second_trajectory->getWayPointDurationFromPrevious(i));
   }
 
-  // adjust the time from start
-  res.second_trajectory->setWayPointDurationFromPrevious(0, sampling_time);
+  // adjust the time from start: the second trajectory continues at the end of
+  // the (possibly scaled) blend period
+  res.second_trajectory->setWayPointDurationFromPrevious(
+      0, blend_time / total_scaling_factor - blend_trajectory_cartesian.points.back().time_from_start.toSec());
 
   res.error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
   return true;
@@ -243,62 +358,94 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::validate
   return true;
 }
 
-void pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blendTrajectoryCartesian(
+bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blendTrajectoryCartesian(
     const pilz_industrial_motion_planner::TrajectoryBlendRequest& req, const std::size_t first_interse_index,
-    const std::size_t second_interse_index, const std::size_t blend_align_index, double sampling_time,
-    pilz_industrial_motion_planner::CartesianTrajectory& trajectory) const
+    const std::size_t second_interse_index, double sampling_time,
+    pilz_industrial_motion_planner::CartesianTrajectory& trajectory, double& blend_time) const
 {
   // other fields of the trajectory
   trajectory.group_name = req.group_name;
   trajectory.link_name = req.link_name;
 
-  // Pose on first trajectory
-  Eigen::Isometry3d blend_sample_pose1 =
-      req.first_trajectory->getWayPoint(first_interse_index).getFrameTransform(req.link_name);
+  // the blend runs from the last point before the blend sphere to the first
+  // point after it, which are not part of the blend
+  const robot_trajectory::RobotTrajectory& first_traj = *req.first_trajectory;
+  const robot_trajectory::RobotTrajectory& second_traj = *req.second_trajectory;
+  const std::size_t start_index = first_interse_index - 1;
+  const std::size_t end_index = second_interse_index + 1;
+  const LinkMotion start = linkMotionAt(first_traj, start_index, req.link_name);
+  const LinkMotion end = linkMotionAt(second_traj, end_index, req.link_name);
 
-  // Pose on second trajectory
-  Eigen::Isometry3d blend_sample_pose2 =
-      req.second_trajectory->getWayPoint(second_interse_index).getFrameTransform(req.link_name);
+  // blend duration: the time to cover the path the two trajectories take
+  // through the blend sphere, with the speed changing smoothly from the
+  // speed entering the blend to the speed leaving it. As in the LIN/CIRC
+  // planners, the rotation counts only where it is the longer motion (angle
+  // times max_trans_vel / max_rot_vel): a duration set by a slow rotation
+  // would stretch the translation curve out of the sphere.
+  double distance = 0.0;
+  double angle = 0.0;
+  pathLength(first_traj, start_index, first_traj.getWayPointCount() - 1, req.link_name, distance, angle);
+  pathLength(second_traj, 0, end_index, req.link_name, distance, angle);
+  double speed0, speed1, path_acc0, path_acc1;
+  speedAndPathAcceleration(start.vel, start.acc, speed0, path_acc0);
+  speedAndPathAcceleration(end.vel, end.acc, speed1, path_acc1);
+  const double translation_time = smoothTransitionTime(distance, speed0, speed1, path_acc0, path_acc1);
+  speedAndPathAcceleration(start.ang_vel, start.ang_acc, speed0, path_acc0);
+  speedAndPathAcceleration(end.ang_vel, end.ang_acc, speed1, path_acc1);
+  const double rotation_time = smoothTransitionTime(angle, speed0, speed1, path_acc0, path_acc1);
+  const double rotation_radius = limits_.getCartesianLimits().getMaxTranslationalVelocity() /
+                                 limits_.getCartesianLimits().getMaxRotationalVelocity();
+  blend_time = (distance >= angle * rotation_radius && translation_time > 0.0) ? translation_time : rotation_time;
+  if (blend_time <= 0.0)
+  {
+    // no motion into or out of the blend: keep the time of the trajectories
+    blend_time = first_traj.getDuration() - first_traj.getWayPointDurationFromStart(start_index) +
+                 second_traj.getWayPointDurationFromStart(end_index);
+  }
 
-  // blend the trajectory
-  double blend_sample_num = second_interse_index + blend_align_index - first_interse_index + 1;
+  // the orientation is interpolated as a rotation vector relative to the
+  // start orientation
+  const Eigen::Vector3d end_rotation = rotationVector(end.pose.linear() * start.pose.linear().transpose());
+
+  // the blend curve must stay in the blend sphere (allowing for the start and
+  // end points, which are just outside it)
+  const Eigen::Vector3d center = first_traj.getLastWayPoint().getFrameTransform(req.link_name).translation();
+  const double max_distance =
+      1.1 * std::max((start.pose.translation() - center).norm(), (end.pose.translation() - center).norm());
+
+  // the samples are evenly spaced in time between the start (t = 0) and the
+  // end (t = blend_time)
+  const std::size_t blend_sample_num = std::max<std::size_t>(2, std::lround(blend_time / sampling_time));
   pilz_industrial_motion_planner::CartesianTrajectoryPoint waypoint;
-  blend_sample_pose2 = req.second_trajectory->getFirstWayPoint().getFrameTransform(req.link_name);
 
   // Pose on blending trajectory
-  Eigen::Isometry3d blend_sample_pose;
-  for (std::size_t i = 0; i < blend_sample_num; ++i)
+  Eigen::Isometry3d blend_sample_pose = Eigen::Isometry3d::Identity();
+  for (std::size_t i = 1; i < blend_sample_num; ++i)
   {
-    // if the first trajectory does not reach the last sample, update
-    if ((first_interse_index + i) < req.first_trajectory->getWayPointCount())
+    const double t = blend_time * i / blend_sample_num;
+
+    blend_sample_pose.translation() = quinticHermite(start.pose.translation(), start.vel, start.acc,
+                                                     end.pose.translation(), end.vel, end.acc, blend_time, t);
+    if ((blend_sample_pose.translation() - center).norm() > max_distance)
     {
-      blend_sample_pose1 = req.first_trajectory->getWayPoint(first_interse_index + i).getFrameTransform(req.link_name);
+      return false;
     }
 
-    // if after the alignment, the second trajectory starts, update
-    if ((first_interse_index + i) > blend_align_index)
-    {
-      blend_sample_pose2 = req.second_trajectory->getWayPoint(first_interse_index + i - blend_align_index)
-                               .getFrameTransform(req.link_name);
-    }
-
-    double s = (i + 1) / blend_sample_num;
-    double alpha = 6 * std::pow(s, 5) - 15 * std::pow(s, 4) + 10 * std::pow(s, 3);
-
-    // blend the translation
-    blend_sample_pose.translation() = blend_sample_pose1.translation() +
-                                      alpha * (blend_sample_pose2.translation() - blend_sample_pose1.translation());
-
-    // blend the orientation
-    Eigen::Quaterniond start_quat(blend_sample_pose1.rotation());
-    Eigen::Quaterniond end_quat(blend_sample_pose2.rotation());
-    blend_sample_pose.linear() = start_quat.slerp(alpha, end_quat).toRotationMatrix();
+    const Eigen::Vector3d rotation = quinticHermite(Eigen::Vector3d::Zero(), start.ang_vel, start.ang_acc, end_rotation,
+                                                    end.ang_vel, end.ang_acc, blend_time, t);
+    const double rotation_angle = rotation.norm();
+    const Eigen::Matrix3d relative_rotation =
+        rotation_angle > std::numeric_limits<double>::epsilon() ?
+            Eigen::AngleAxisd(rotation_angle, rotation / rotation_angle).toRotationMatrix() :
+            Eigen::Matrix3d::Identity();
+    blend_sample_pose.linear() = relative_rotation * start.pose.linear();
 
     // push to the trajectory
     waypoint.pose = tf2::toMsg(blend_sample_pose);
-    waypoint.time_from_start = ros::Duration((i + 1.0) * sampling_time);
+    waypoint.time_from_start = ros::Duration(t);
     trajectory.points.push_back(waypoint);
   }
+  return true;
 }
 
 void pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::scaleTrajectoryCartesian(pilz_industrial_motion_planner::CartesianTrajectory& trajectory, double scale_factor) const
@@ -336,21 +483,4 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::searchIn
 
   ROS_INFO_STREAM("Intersection point of second trajectory found, index: " << second_interse_index);
   return true;
-}
-
-void pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::determineTrajectoryAlignment(
-    const pilz_industrial_motion_planner::TrajectoryBlendRequest& req, std::size_t first_interse_index,
-    std::size_t second_interse_index, std::size_t& blend_align_index) const
-{
-  size_t way_point_count_1 = req.first_trajectory->getWayPointCount() - first_interse_index;
-  size_t way_point_count_2 = second_interse_index + 1;
-
-  if (way_point_count_1 > way_point_count_2)
-  {
-    blend_align_index = req.first_trajectory->getWayPointCount() - second_interse_index - 1;
-  }
-  else
-  {
-    blend_align_index = first_interse_index;
-  }
 }
