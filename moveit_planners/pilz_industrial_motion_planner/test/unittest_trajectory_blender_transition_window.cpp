@@ -688,9 +688,10 @@ TEST_P(TrajectoryBlenderTransitionWindowTest, testNonLinearBlending)
     }
 
     moveit_msgs::MoveItErrorCodes error_code;
+    std::pair<double, double> max_scaling_factors;
     if (!generateJointTrajectory(planning_scene_, planner_limits_.getJointLimitContainer(), cart_traj, planning_group_,
                                  target_link_, initial_joint_position, initial_joint_velocity, joint_traj, error_code,
-                                 true))
+                                 max_scaling_factors, true))
     {
       std::runtime_error("Failed to generate trajectory.");
     }

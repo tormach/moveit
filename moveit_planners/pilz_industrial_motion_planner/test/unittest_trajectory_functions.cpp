@@ -60,6 +60,8 @@
 #include "pilz_industrial_motion_planner/cartesian_trajectory_point.h"
 #include "pilz_industrial_motion_planner/limits_container.h"
 #include "pilz_industrial_motion_planner/trajectory_functions.h"
+#include "pilz_industrial_motion_planner/trajectory_segment.hpp"
+#include "pilz_industrial_motion_planner/velocity_profile_atrap.h"
 #include "test_utils.h"
 
 #define _USE_MATH_DEFINES
@@ -692,9 +694,10 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testGenerateJointTrajectoryWithI
   path->Add(KDL::Frame(KDL::Rotation::RPY(0, 0, 0), KDL::Vector(-1, 0, 0)));
   path->Finish();
   // Note: 'velprof' is deleted by KDL::Trajectory_Segment
-  KDL::VelocityProfile* vel_prof = new KDL::VelocityProfile_Trap(0.5, 0.1);
+  pilz_industrial_motion_planner::VelocityProfile* vel_prof =
+      new pilz_industrial_motion_planner::VelocityProfileATrap(0.5, 0.1, 0.1);
   vel_prof->SetProfile(0, path->PathLength());
-  KDL::Trajectory_Segment kdl_trajectory(path, vel_prof);
+  pilz_industrial_motion_planner::Trajectory_Segment kdl_trajectory(path, vel_prof);
 
   pilz_industrial_motion_planner::JointLimitsContainer joint_limits;
   std::string group_name{ "invalid_group_name" };
@@ -705,9 +708,10 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testGenerateJointTrajectoryWithI
   bool check_self_collision{ false };
 
   std::pair<double, double> max_scaling_factors;
+  Eigen::Isometry3d pose_sample_last;
   EXPECT_FALSE(pilz_industrial_motion_planner::generateJointTrajectory(
       planning_scene_, joint_limits, kdl_trajectory, group_name, tcp_link_, initial_joint_position, sampling_time,
-      joint_trajectory, error_code, max_scaling_factors, check_self_collision));
+      sampling_time, joint_trajectory, error_code, max_scaling_factors, pose_sample_last, check_self_collision));
 
   std::map<std::string, double> initial_joint_velocity;
 
@@ -719,7 +723,7 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testGenerateJointTrajectoryWithI
 
   EXPECT_FALSE(pilz_industrial_motion_planner::generateJointTrajectory(
       planning_scene_, joint_limits, cart_traj, group_name, tcp_link_, initial_joint_position, initial_joint_velocity,
-      joint_trajectory, error_code, check_self_collision));
+      joint_trajectory, error_code, max_scaling_factors, check_self_collision));
 }
 
 /**
