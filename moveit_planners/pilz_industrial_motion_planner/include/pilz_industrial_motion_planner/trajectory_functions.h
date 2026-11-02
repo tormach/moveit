@@ -158,11 +158,10 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              bool output_accelerations = false);
 
 /**
- * @brief Determines the sampling time and checks that both trajectories use the
- * same sampling time.
- * @return TRUE if the sampling time is equal between all given points (except
- * the last two points
- * of each trajectory), otherwise FALSE.
+ * @brief Determines the sampling time: the first sampling interval of the first
+ * trajectory (or of the second, if the first is too short). The sampling times
+ * along the trajectories may differ (time-based and distance-based sampling).
+ * @return FALSE if neither trajectory has enough points, otherwise TRUE.
  */
 bool determineAndCheckSamplingTime(const robot_trajectory::RobotTrajectoryPtr& first_trajectory,
                                    const robot_trajectory::RobotTrajectoryPtr& second_trajectory, double EPSILON,

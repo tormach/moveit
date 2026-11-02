@@ -551,13 +551,14 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsWithS
 
 /**
  * @brief Check that function VerifySampleJointLimits() returns 'false' in case
- * of a velocity violation.
+ * of a velocity violation, with the velocity scaling factor that removes it.
  *
  * Test Sequence:
  *    1. Call function with a velocity violation.
  *
  * Expected Results:
- *    1. Function returns 'false'.
+ *    1. Function returns 'false' and a velocity scaling factor of
+ *       max_velocity / velocity.
  */
 TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsVelocityViolation)
 {
@@ -565,7 +566,9 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsVeloc
 
   std::map<std::string, double> position_last{ { test_joint_name, 2.0 } };
   std::map<std::string, double> position_current{ { test_joint_name, 10.0 } };
-  std::map<std::string, double> velocity_last;
+  // all limits are checked to compute the scaling factors, so the last
+  // velocity is needed as well
+  std::map<std::string, double> velocity_last{ { test_joint_name, 0.0 } };
   double duration_current{ 1.0 };
   double duration_last{ 0.0 };
   pilz_industrial_motion_planner::JointLimitsContainer joint_limits;
@@ -581,6 +584,7 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsVeloc
   std::pair<double, double> max_scaling_factors;
   EXPECT_FALSE(pilz_industrial_motion_planner::verifySampleJointLimits(position_last, velocity_last, position_current,
                                                                        duration_last, duration_current, joint_limits, max_scaling_factors));
+  EXPECT_DOUBLE_EQ(7.0 / 8.0, max_scaling_factors.first);
 }
 
 /**
@@ -789,17 +793,19 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTim
 }
 
 /**
- * @brief Check that function determineAndCheckSamplingTime() returns 'false' if
- * sampling time is violated.
+ * @brief Check that function determineAndCheckSamplingTime() accepts
+ * trajectories with unequal sampling times (LIN/CIRC sample by time while
+ * accelerating and by distance at constant velocity).
  *
  *
  * Test Sequence:
- *    1. Call function with trajectories which violate sampling time.
+ *    1. Call function with trajectories with unequal sampling times.
  *
  * Expected Results:
- *    1. Function returns 'false'.
+ *    1. Function returns 'true' and the first sampling time of the first
+ *       trajectory.
  */
-TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTimeViolateSamplingTime)
+TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTimeUnequalSamplingTime)
 {
   robot_trajectory::RobotTrajectoryPtr first_trajectory =
       std::make_shared<robot_trajectory::RobotTrajectory>(robot_model_, planning_group_);
@@ -813,7 +819,7 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTim
   first_trajectory->insertWayPoint(0, rstate, expected_sampling_time);
   first_trajectory->insertWayPoint(1, rstate, expected_sampling_time);
   first_trajectory->insertWayPoint(2, rstate, expected_sampling_time);
-  // Violate sampling time
+  // Unequal sampling time
   first_trajectory->insertWayPoint(2, rstate, expected_sampling_time + 1.0);
   first_trajectory->insertWayPoint(3, rstate, expected_sampling_time);
 
@@ -822,8 +828,8 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTim
   second_trajectory->insertWayPoint(2, rstate, expected_sampling_time);
   second_trajectory->insertWayPoint(3, rstate, expected_sampling_time);
 
-  EXPECT_FALSE(pilz_industrial_motion_planner::determineAndCheckSamplingTime(first_trajectory, second_trajectory,
-                                                                             epsilon, sampling_time));
+  EXPECT_TRUE(pilz_industrial_motion_planner::determineAndCheckSamplingTime(first_trajectory, second_trajectory,
+                                                                            epsilon, sampling_time));
   EXPECT_EQ(expected_sampling_time, sampling_time);
 }
 
