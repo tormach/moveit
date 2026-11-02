@@ -97,6 +97,10 @@ private:
   /**
    * @brief Construct a KDL::Path object for a Cartesian path of an arc.
    *
+   * @param velocity_scaling_factor: velocity scaling factor of the request;
+   * the arc moves at the scaled translational velocity, with the rotation
+   * limited only by the maximum rotational velocity
+   *
    * @return A unique pointer of the path object, null_ptr in case of an error.
    *
    * @throws CircleNoPlane if the plane in which the circle resides,
@@ -107,7 +111,7 @@ private:
    * @throws CenterPointDifferentRadius if the distances between start-center
    * and goal-center are different.
    */
-  std::unique_ptr<KDL::Path> setPathCIRC(const MotionPlanInfo& info) const;
+  std::unique_ptr<KDL::Path> setPathCIRC(const MotionPlanInfo& info, double velocity_scaling_factor) const;
 };
 
 }  // namespace pilz_industrial_motion_planner
