@@ -144,9 +144,12 @@ void TrajectoryGeneratorLIN::extractMotionPlanInfo(const planning_scene::Plannin
 
   if (!planning_parameters_->getTrimOnFailure())
   {
-    // check goal pose ik before Cartesian motion plan starts, we use a separate planning group with global solving enabled
+    // check goal pose ik before Cartesian motion plan starts, we use a separate planning group with global solving
+    // enabled if the robot model has one
+    const std::string global_group =
+        robot_model_->hasJointModelGroup(info.group_name + "_global") ? info.group_name + "_global" : info.group_name;
     std::map<std::string, double> ik_solution;
-    if (!computePoseIK(scene, info.group_name + "_global", info.link_name, info.goal_pose, frame_id, info.start_joint_position,
+    if (!computePoseIK(scene, global_group, info.link_name, info.goal_pose, frame_id, info.start_joint_position,
                        ik_solution))
     {
       std::ostringstream os;
