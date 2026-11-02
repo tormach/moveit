@@ -158,6 +158,20 @@ bool generateJointTrajectory(const planning_scene::PlanningSceneConstPtr& scene,
                              bool output_accelerations = false);
 
 /**
+ * @brief Replace the velocities of the interior points with a three-point
+ * (central) difference of the positions, for the first num_joints joints.
+ *
+ * The sampling loop computes each velocity as a backward difference, which
+ * is the mean velocity over the previous interval, i.e. it lags the position
+ * by half a sample. A trajectory controller that interpolates the points with
+ * cubic splines then puts a small velocity step at every point, which the
+ * drives feel as a torque kick at the sampling rate. The three-point
+ * difference is exact for a parabola and also handles unequal intervals.
+ * The first and last points are left unchanged.
+ */
+void setCentralDifferenceVelocities(trajectory_msgs::JointTrajectory& joint_trajectory, std::size_t num_joints);
+
+/**
  * @brief Determines the sampling time: the first sampling interval of the first
  * trajectory (or of the second, if the first is too short). The sampling times
  * along the trajectories may differ (time-based and distance-based sampling).

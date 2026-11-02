@@ -44,21 +44,8 @@
 
 #include "pilz_industrial_motion_planner/velocity_profile.h"
 
-namespace
-{
-/**
- * @brief Replace the velocities of the interior points with a three-point
- * (central) difference of the positions, for the first num_joints joints.
- *
- * The sampling loop computes each velocity as a backward difference, which
- * is the mean velocity over the previous interval, i.e. it lags the position
- * by half a sample. A trajectory controller that interpolates the points with
- * cubic splines then puts a small velocity step at every point, which the
- * drives feel as a torque kick at the sampling rate. The three-point
- * difference is exact for a parabola and also handles unequal intervals.
- * The first and last points (at rest) are left unchanged.
- */
-void setCentralDifferenceVelocities(trajectory_msgs::JointTrajectory& joint_trajectory, std::size_t num_joints)
+void pilz_industrial_motion_planner::setCentralDifferenceVelocities(trajectory_msgs::JointTrajectory& joint_trajectory,
+                                                                    std::size_t num_joints)
 {
   auto& points = joint_trajectory.points;
   for (std::size_t i = 1; i + 1 < points.size(); ++i)
@@ -73,7 +60,6 @@ void setCentralDifferenceVelocities(trajectory_msgs::JointTrajectory& joint_traj
     }
   }
 }
-}  // namespace
 
 bool pilz_industrial_motion_planner::computePoseIK(const planning_scene::PlanningSceneConstPtr& scene,
                                                    const std::string& group_name, const std::string& link_name,

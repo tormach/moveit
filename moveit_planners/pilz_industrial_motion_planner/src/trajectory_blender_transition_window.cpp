@@ -36,6 +36,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <math.h>
@@ -178,6 +179,10 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
     return false;
   }
 
+  // sample the blend at the planner's sampling time: the spacing of the
+  // trajectories' own points varies (5 mm at constant velocity)
+  sampling_time = planning_parameters_->getSamplingTime();
+
   // blend the trajectories in Cartesian space
   pilz_industrial_motion_planner::CartesianTrajectory blend_trajectory_cartesian;
   double blend_time;
@@ -259,6 +264,39 @@ bool pilz_industrial_motion_planner::TrajectoryBlenderTransitionWindow::blend(
                     total_scaling_factor);
   }
   res.scaling_factor = total_scaling_factor;
+
+  // the limits above are checked with the backward differences; output the
+  // central differences, taking in the points before and after the blend
+  // (the tcp_lin/tcp_rot entries are left unchanged)
+  std::vector<std::string> joint_names;
+  std::copy_if(blend_joint_trajectory.joint_names.begin(), blend_joint_trajectory.joint_names.end(),
+               std::back_inserter(joint_names),
+               [](const std::string& name) { return name != "tcp_lin" && name != "tcp_rot"; });
+  const std::size_t num_joints = joint_names.size();
+  trajectory_msgs::JointTrajectory with_neighbours;
+  auto neighbour = [&](const moveit::core::RobotState& state, double time) {
+    trajectory_msgs::JointTrajectoryPoint point;
+    point.time_from_start = ros::Duration(time);
+    for (const std::string& joint_name : joint_names)
+    {
+      point.positions.push_back(state.getVariablePosition(joint_name));
+    }
+    point.velocities.resize(num_joints);
+    return point;
+  };
+  with_neighbours.points.push_back(neighbour(req.first_trajectory->getWayPoint(first_intersection_index - 1), 0.0));
+  with_neighbours.points.insert(with_neighbours.points.end(), blend_joint_trajectory.points.begin(),
+                                blend_joint_trajectory.points.end());
+  with_neighbours.points.push_back(
+      neighbour(req.second_trajectory->getWayPoint(second_intersection_index + 1), blend_time / total_scaling_factor));
+  setCentralDifferenceVelocities(with_neighbours, num_joints);
+  for (std::size_t i = 0; i < blend_joint_trajectory.points.size(); ++i)
+  {
+    for (std::size_t j = 0; j < num_joints; ++j)
+    {
+      blend_joint_trajectory.points[i].velocities[j] = with_neighbours.points[i + 1].velocities[j];
+    }
+  }
 
   res.first_trajectory = std::make_shared<robot_trajectory::RobotTrajectory>(req.first_trajectory->getRobotModel(),
                                                                              req.first_trajectory->getGroup());
