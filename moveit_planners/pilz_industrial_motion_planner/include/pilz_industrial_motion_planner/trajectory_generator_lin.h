@@ -85,9 +85,16 @@ private:
 
   /**
    * @brief construct a KDL::Path object for a Cartesian straight line
+   * @param velocity_scaling_factor: velocity scaling factor of the request; a
+   * line with translation moves at the scaled translational velocity, with the
+   * rotation limited only by the maximum rotational velocity
    * @return a unique pointer of the path object. null_ptr in case of an error.
    */
-  std::unique_ptr<KDL::Path> setPathLIN(const Eigen::Affine3d& start_pose, const Eigen::Affine3d& goal_pose) const;
+  std::unique_ptr<KDL::Path> setPathLIN(const Eigen::Affine3d& start_pose, const Eigen::Affine3d& goal_pose,
+                                        double velocity_scaling_factor) const;
+
+  //! Translation (m) below which a line counts as a pure rotation
+  static constexpr double MIN_TRANSLATION{ 1e-6 };
 };
 
 }  // namespace pilz_industrial_motion_planner

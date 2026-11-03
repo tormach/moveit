@@ -263,8 +263,11 @@ void TrajectoryGeneratorPTP::extractMotionPlanInfo(const planning_scene::Plannin
   else
   {
     Eigen::Isometry3d goal_pose = getConstraintPose(req.goal_constraints.front());
-    if (!computePoseIK(scene, req.group_name + "_global", req.goal_constraints.at(0).position_constraints.at(0).link_name,
-                       goal_pose, robot_model_->getModelFrame(), info.start_joint_position, info.goal_joint_position))
+    // use a separate planning group with global solving enabled if the robot model has one
+    const std::string global_group =
+        robot_model_->hasJointModelGroup(req.group_name + "_global") ? req.group_name + "_global" : req.group_name;
+    if (!computePoseIK(scene, global_group, req.goal_constraints.at(0).position_constraints.at(0).link_name, goal_pose,
+                       robot_model_->getModelFrame(), info.start_joint_position, info.goal_joint_position))
     {
       throw PtpNoIkSolutionForGoalPose("No IK solution for goal pose");
     }

@@ -349,6 +349,7 @@ if(CATKIN_ENABLE_TESTING)
   catkin_add_gtest(unittest_trajectory_generator
     test/unittest_trajectory_generator.cpp
     src/trajectory_generator.cpp
+    src/velocity_profile_atrap.cpp
   )
   target_link_libraries(unittest_trajectory_generator
     ${catkin_LIBRARIES}

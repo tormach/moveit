@@ -60,6 +60,8 @@
 #include "pilz_industrial_motion_planner/cartesian_trajectory_point.h"
 #include "pilz_industrial_motion_planner/limits_container.h"
 #include "pilz_industrial_motion_planner/trajectory_functions.h"
+#include "pilz_industrial_motion_planner/trajectory_segment.hpp"
+#include "pilz_industrial_motion_planner/velocity_profile_atrap.h"
 #include "test_utils.h"
 
 #define _USE_MATH_DEFINES
@@ -549,13 +551,14 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsWithS
 
 /**
  * @brief Check that function VerifySampleJointLimits() returns 'false' in case
- * of a velocity violation.
+ * of a velocity violation, with the velocity scaling factor that removes it.
  *
  * Test Sequence:
  *    1. Call function with a velocity violation.
  *
  * Expected Results:
- *    1. Function returns 'false'.
+ *    1. Function returns 'false' and a velocity scaling factor of
+ *       max_velocity / velocity.
  */
 TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsVelocityViolation)
 {
@@ -563,7 +566,9 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsVeloc
 
   std::map<std::string, double> position_last{ { test_joint_name, 2.0 } };
   std::map<std::string, double> position_current{ { test_joint_name, 10.0 } };
-  std::map<std::string, double> velocity_last;
+  // all limits are checked to compute the scaling factors, so the last
+  // velocity is needed as well
+  std::map<std::string, double> velocity_last{ { test_joint_name, 0.0 } };
   double duration_current{ 1.0 };
   double duration_last{ 0.0 };
   pilz_industrial_motion_planner::JointLimitsContainer joint_limits;
@@ -579,6 +584,7 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testVerifySampleJointLimitsVeloc
   std::pair<double, double> max_scaling_factors;
   EXPECT_FALSE(pilz_industrial_motion_planner::verifySampleJointLimits(position_last, velocity_last, position_current,
                                                                        duration_last, duration_current, joint_limits, max_scaling_factors));
+  EXPECT_DOUBLE_EQ(7.0 / 8.0, max_scaling_factors.first);
 }
 
 /**
@@ -692,9 +698,10 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testGenerateJointTrajectoryWithI
   path->Add(KDL::Frame(KDL::Rotation::RPY(0, 0, 0), KDL::Vector(-1, 0, 0)));
   path->Finish();
   // Note: 'velprof' is deleted by KDL::Trajectory_Segment
-  KDL::VelocityProfile* vel_prof = new KDL::VelocityProfile_Trap(0.5, 0.1);
+  pilz_industrial_motion_planner::VelocityProfile* vel_prof =
+      new pilz_industrial_motion_planner::VelocityProfileATrap(0.5, 0.1, 0.1);
   vel_prof->SetProfile(0, path->PathLength());
-  KDL::Trajectory_Segment kdl_trajectory(path, vel_prof);
+  pilz_industrial_motion_planner::Trajectory_Segment kdl_trajectory(path, vel_prof);
 
   pilz_industrial_motion_planner::JointLimitsContainer joint_limits;
   std::string group_name{ "invalid_group_name" };
@@ -705,9 +712,10 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testGenerateJointTrajectoryWithI
   bool check_self_collision{ false };
 
   std::pair<double, double> max_scaling_factors;
+  Eigen::Isometry3d pose_sample_last;
   EXPECT_FALSE(pilz_industrial_motion_planner::generateJointTrajectory(
       planning_scene_, joint_limits, kdl_trajectory, group_name, tcp_link_, initial_joint_position, sampling_time,
-      joint_trajectory, error_code, max_scaling_factors, check_self_collision));
+      sampling_time, joint_trajectory, error_code, max_scaling_factors, pose_sample_last, check_self_collision));
 
   std::map<std::string, double> initial_joint_velocity;
 
@@ -719,7 +727,7 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testGenerateJointTrajectoryWithI
 
   EXPECT_FALSE(pilz_industrial_motion_planner::generateJointTrajectory(
       planning_scene_, joint_limits, cart_traj, group_name, tcp_link_, initial_joint_position, initial_joint_velocity,
-      joint_trajectory, error_code, check_self_collision));
+      joint_trajectory, error_code, max_scaling_factors, check_self_collision));
 }
 
 /**
@@ -785,17 +793,19 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTim
 }
 
 /**
- * @brief Check that function determineAndCheckSamplingTime() returns 'false' if
- * sampling time is violated.
+ * @brief Check that function determineAndCheckSamplingTime() accepts
+ * trajectories with unequal sampling times (LIN/CIRC sample by time while
+ * accelerating and by distance at constant velocity).
  *
  *
  * Test Sequence:
- *    1. Call function with trajectories which violate sampling time.
+ *    1. Call function with trajectories with unequal sampling times.
  *
  * Expected Results:
- *    1. Function returns 'false'.
+ *    1. Function returns 'true' and the first sampling time of the first
+ *       trajectory.
  */
-TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTimeViolateSamplingTime)
+TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTimeUnequalSamplingTime)
 {
   robot_trajectory::RobotTrajectoryPtr first_trajectory =
       std::make_shared<robot_trajectory::RobotTrajectory>(robot_model_, planning_group_);
@@ -809,7 +819,7 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTim
   first_trajectory->insertWayPoint(0, rstate, expected_sampling_time);
   first_trajectory->insertWayPoint(1, rstate, expected_sampling_time);
   first_trajectory->insertWayPoint(2, rstate, expected_sampling_time);
-  // Violate sampling time
+  // Unequal sampling time
   first_trajectory->insertWayPoint(2, rstate, expected_sampling_time + 1.0);
   first_trajectory->insertWayPoint(3, rstate, expected_sampling_time);
 
@@ -818,8 +828,8 @@ TEST_P(TrajectoryFunctionsTestFlangeAndGripper, testDetermineAndCheckSamplingTim
   second_trajectory->insertWayPoint(2, rstate, expected_sampling_time);
   second_trajectory->insertWayPoint(3, rstate, expected_sampling_time);
 
-  EXPECT_FALSE(pilz_industrial_motion_planner::determineAndCheckSamplingTime(first_trajectory, second_trajectory,
-                                                                             epsilon, sampling_time));
+  EXPECT_TRUE(pilz_industrial_motion_planner::determineAndCheckSamplingTime(first_trajectory, second_trajectory,
+                                                                            epsilon, sampling_time));
   EXPECT_EQ(expected_sampling_time, sampling_time);
 }
 

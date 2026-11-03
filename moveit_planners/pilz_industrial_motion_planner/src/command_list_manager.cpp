@@ -53,6 +53,7 @@ namespace pilz_industrial_motion_planner
 static const std::string PARAM_NAMESPACE_LIMITS = "robot_description_planning";
 static const std::string PARAM_PLANNING_PARAMETERS = "~/pilz_industrial_motion_planner";
 static constexpr double VELOCITY_TOLERANCE{ 1e-8 };
+static constexpr int MAX_BLEND_SCALING_REPLANS{ 1 };
 
 CommandListManager::CommandListManager(const ros::NodeHandle& nh, const moveit::core::RobotModelConstPtr& model)
   : nh_(nh), model_(model)
@@ -100,16 +101,47 @@ RobotTrajCont CommandListManager::solve(const planning_scene::PlanningSceneConst
   RadiiCont radii{ extractBlendRadii(*model_, req_list) };
   checkForOverlappingRadii(resp_cont, radii);
 
-  plan_comp_builder_.reset();
-  for (MotionResponseCont::size_type i = 0; i < resp_cont.size(); ++i)
+  auto build = [&]() {
+    plan_comp_builder_.reset();
+    for (MotionResponseCont::size_type i = 0; i < resp_cont.size(); ++i)
+    {
+      plan_comp_builder_.append(planning_scene, resp_cont.at(i).trajectory_,
+                                // The blend radii has to be "attached" to
+                                // the second part of a blend trajectory,
+                                // therefore: "i-1".
+                                (i > 0 ? radii.at(i - 1) : 0.));
+    }
+    return plan_comp_builder_.build();
+  };
+  RobotTrajCont result{ build() };
+
+  // A blend that is too fast for the joint limits is slowed down on its own by
+  // the blender, which leaves a velocity step where it meets the full-speed
+  // trajectories before and after it. Instead, re-plan the whole sequence
+  // slower by the blend's time scaling factor s (velocity * s,
+  // acceleration * s^2: the same paths, stretched in time), so the blends fit.
+  moveit_msgs::MotionSequenceRequest scaled_req_list{ req_list };
+  for (int i = 0; i < MAX_BLEND_SCALING_REPLANS && plan_comp_builder_.getMinBlendScalingFactor() < 1.0; ++i)
   {
-    plan_comp_builder_.append(planning_scene, resp_cont.at(i).trajectory_,
-                              // The blend radii has to be "attached" to
-                              // the second part of a blend trajectory,
-                              // therefore: "i-1".
-                              (i > 0 ? radii.at(i - 1) : 0.));
+    const double s = plan_comp_builder_.getMinBlendScalingFactor();
+    ROS_INFO_STREAM("Blend exceeds the joint limits, re-planning the sequence with time scaling factor " << s);
+    for (auto& item : scaled_req_list.items)
+    {
+      item.req.max_velocity_scaling_factor *= s;
+      item.req.max_acceleration_scaling_factor *= s * s;
+    }
+    try
+    {
+      resp_cont = solveSequenceItems(planning_scene, planning_pipeline, scaled_req_list);
+      result = build();
+    }
+    catch (const std::exception& ex)
+    {
+      ROS_WARN_STREAM("Re-planning the slower sequence failed, keeping the previous plan: " << ex.what());
+      break;
+    }
   }
-  return plan_comp_builder_.build();
+  return result;
 }
 
 bool CommandListManager::checkRadiiForOverlap(const robot_trajectory::RobotTrajectory& traj_A, const double radii_A,

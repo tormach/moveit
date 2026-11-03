@@ -200,7 +200,7 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
                                    const planning_interface::MotionPlanRequest& req, const MotionPlanInfo& plan_info,
                                    const double& /*sampling_time*/, trajectory_msgs::JointTrajectory& joint_trajectory)
 {
-  std::unique_ptr<KDL::Path> cart_path(setPathCIRC(plan_info));
+  std::unique_ptr<KDL::Path> cart_path(setPathCIRC(plan_info, req.max_velocity_scaling_factor));
   planning_interface::MotionPlanRequest new_req = req;
   moveit_msgs::MoveItErrorCodes error_code;
   bool scaling_factor_corrected = false;
@@ -274,7 +274,8 @@ void TrajectoryGeneratorCIRC::plan(const planning_scene::PlanningSceneConstPtr& 
   }
 }
 
-std::unique_ptr<KDL::Path> TrajectoryGeneratorCIRC::setPathCIRC(const MotionPlanInfo& info) const
+std::unique_ptr<KDL::Path> TrajectoryGeneratorCIRC::setPathCIRC(const MotionPlanInfo& info,
+                                                                double velocity_scaling_factor) const
 {
   ROS_DEBUG("Set Cartesian path for CIRC command.");
 
@@ -291,7 +292,10 @@ std::unique_ptr<KDL::Path> TrajectoryGeneratorCIRC::setPathCIRC(const MotionPlan
   // The KDL::Path implementation chooses the motion with the longer duration
   // (translation vs. rotation)
   // and uses eqradius as scaling factor between the distances.
-  double eqradius = planner_limits_.getCartesianLimits().getMaxTranslationalVelocity() /
+  // An arc always translates: scale eqradius with the velocity scaling factor
+  // as well, so the tool moves at the scaled translational velocity and the
+  // rotation is limited only by the maximum rotational velocity.
+  double eqradius = velocity_scaling_factor * planner_limits_.getCartesianLimits().getMaxTranslationalVelocity() /
                     planner_limits_.getCartesianLimits().getMaxRotationalVelocity();
 
   try

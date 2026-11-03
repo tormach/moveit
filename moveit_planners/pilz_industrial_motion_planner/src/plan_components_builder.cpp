@@ -34,6 +34,7 @@
 
 #include "pilz_industrial_motion_planner/plan_components_builder.h"
 
+#include <algorithm>
 #include <cassert>
 
 #include "pilz_industrial_motion_planner/tip_frame_getter.h"
@@ -119,6 +120,7 @@ void PlanComponentsBuilder::blend(const planning_scene::PlanningSceneConstPtr& p
   {
     throw BlendingFailedException("Blending failed");
   }
+  min_blend_scaling_factor_ = std::min(min_blend_scaling_factor_, blend_response.scaling_factor);
 
   // Append the new trajectory elements
   appendWithStrictTimeIncrease(*(traj_cont_.back()), *blend_response.first_trajectory);

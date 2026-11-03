@@ -144,9 +144,12 @@ void TrajectoryGeneratorLIN::extractMotionPlanInfo(const planning_scene::Plannin
 
   if (!planning_parameters_->getTrimOnFailure())
   {
-    // check goal pose ik before Cartesian motion plan starts, we use a separate planning group with global solving enabled
+    // check goal pose ik before Cartesian motion plan starts, we use a separate planning group with global solving
+    // enabled if the robot model has one
+    const std::string global_group =
+        robot_model_->hasJointModelGroup(info.group_name + "_global") ? info.group_name + "_global" : info.group_name;
     std::map<std::string, double> ik_solution;
-    if (!computePoseIK(scene, info.group_name + "_global", info.link_name, info.goal_pose, frame_id, info.start_joint_position,
+    if (!computePoseIK(scene, global_group, info.link_name, info.goal_pose, frame_id, info.start_joint_position,
                        ik_solution))
     {
       std::ostringstream os;
@@ -161,7 +164,8 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
                                   const double & /*sampling_time*/, trajectory_msgs::JointTrajectory& joint_trajectory)
 {
   // create Cartesian path for lin
-  std::unique_ptr<KDL::Path> path(setPathLIN(plan_info.start_pose, plan_info.goal_pose));
+  std::unique_ptr<KDL::Path> path(
+      setPathLIN(plan_info.start_pose, plan_info.goal_pose, req.max_velocity_scaling_factor));
   planning_interface::MotionPlanRequest new_req = req;
   moveit_msgs::MoveItErrorCodes error_code;
   bool scaling_factor_corrected = false;
@@ -204,7 +208,7 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
       if (trim_on_failure && !joint_trajectory.points.empty())
       {
         // trimming active and at least one trajectory point, need to resample
-        path = setPathLIN(plan_info.start_pose, pose_sample_last);
+        path = setPathLIN(plan_info.start_pose, pose_sample_last, req.max_velocity_scaling_factor);
         ROS_DEBUG_STREAM("Shortened trajectory");
       }
       else if (error_code.val != moveit_msgs::MoveItErrorCodes::PLANNING_FAILED)
@@ -247,15 +251,27 @@ void TrajectoryGeneratorLIN::plan(const planning_scene::PlanningSceneConstPtr& s
 }
 
 std::unique_ptr<KDL::Path> TrajectoryGeneratorLIN::setPathLIN(const Eigen::Affine3d& start_pose,
-                                                              const Eigen::Affine3d& goal_pose) const
+                                                              const Eigen::Affine3d& goal_pose,
+                                                              double velocity_scaling_factor) const
 {
   ROS_DEBUG("Set Cartesian path for LIN command.");
 
   KDL::Frame kdl_start_pose, kdl_goal_pose;
   tf2::fromMsg(tf2::toMsg(start_pose), kdl_start_pose);
   tf2::fromMsg(tf2::toMsg(goal_pose), kdl_goal_pose);
+  // The KDL path moves at the speed of the longer of translation and rotation,
+  // with eqradius converting the rotation angle into a distance. With today's
+  // velocity scaling factor applied to both, a line with rotation would move
+  // slower than the scaled translational velocity. Scale eqradius as well, so
+  // the tool moves at the scaled translational velocity and the rotation is
+  // limited only by the maximum rotational velocity. A pure rotation (no
+  // translation) moves at the scaled rotational velocity.
   double eqradius = planner_limits_.getCartesianLimits().getMaxTranslationalVelocity() /
                     planner_limits_.getCartesianLimits().getMaxRotationalVelocity();
+  if ((kdl_goal_pose.p - kdl_start_pose.p).Norm() > MIN_TRANSLATION)
+  {
+    eqradius *= velocity_scaling_factor;
+  }
   KDL::RotationalInterpolation* rot_interpo = new KDL::RotationalInterpolation_SingleAxis();
 
   return std::unique_ptr<KDL::Path>(new KDL::Path_Line(kdl_start_pose, kdl_goal_pose, rot_interpo, eqradius, true));
